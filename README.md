@@ -19,7 +19,7 @@ Files within a torrent are exposed via the URL path being the path components of
 Serves torrent corresponding to lookup of mutable DHT item. Salt is optional per [BEP 46]. This means that owners of a public key can also manage cookies for their salted subdomains (and potentially other resources that support a subdomain relationship like this).
 
 #### {target}.44.bt
-Fetches an immutable item from the DHT. 44 is a reference to [BEP 44]. The returned item is an encoded bencode value. Various path and query values might support conversion into other formats.
+Fetches an immutable item from the DHT. `44` is a reference to [BEP 44]. The returned item is an encoded bencode value. Various path and query values might support conversion into other formats.
 
 [BEP 44]: http://bittorrent.org/beps/bep_0044.html
 [BEP 46]: http://bittorrent.org/beps/bep_0046.html
