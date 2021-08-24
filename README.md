@@ -52,6 +52,8 @@ HTTP proxies can be used to transparently provide the address mapping without mo
 
 Proxies route `.bt` and domains with `_btlink` records to a gateway. They may expose endpoints serving PAC files for trivial end-user configuration.
 
+Proxies can set a header to tell servers that they their clients support btlink. This means that dynamic sites can provide generic btlink URLs without explicitly selecting a public gateway as a fallback.
+
 [PAC]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Proxy_servers_and_tunneling/Proxy_Auto-Configuration_PAC_file
 
 ### Gateways
