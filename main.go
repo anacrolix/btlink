@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	_ "embed"
 	"fmt"
 	"io"
 	"log"
@@ -10,7 +11,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"strings"
 	"sync"
+	"text/template"
 )
 
 type indentWriter struct {
@@ -105,24 +108,75 @@ func mainErr() error {
 	}
 }
 
+//go:embed pac.tmpl
+var proxyPacTmpl string
+
+type pacData struct {
+	HttpProxy string
+}
+
+func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string) (ok bool, err error) {
+	if r.URL.Path != "/.btlink/proxy.pac" {
+		return
+	}
+	ok = true
+	t := template.Must(template.New("").Parse(proxyPacTmpl))
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		return
+	}
+	// Chrome seems to ignore the inline, but does pay attention to the filename. It's just nice for
+	// end users to be able to view what they're getting remotely.
+	w.Header().Set("Content-Disposition", "inline; filename=btlink.pac")
+	w.Header().Set("Content-Type", `application/x-ns-proxy-autoconfig`)
+	err = t.Execute(w, pacData{HttpProxy: net.JoinHostPort(host, httpProxyPort)})
+	if err != nil {
+		err = fmt.Errorf("executing template: %w", err)
+	}
+	return
+}
+
+func requestLogString(r *http.Request) []byte {
+	var buf bytes.Buffer
+	r.Write(newIndentWriter(&buf, "  "))
+	return bytes.TrimSpace(buf.Bytes())
+}
+
+func serveBtLink(w http.ResponseWriter, r *http.Request) bool {
+	log.Printf("considering %q for btlink handling", r.Host)
+	if !strings.HasSuffix(r.Host, ".bt") {
+		return false
+	}
+	http.Error(w, "not implemented yet", http.StatusNotImplemented)
+	return true
+}
+
 func proxy() error {
-	httpAddr := ":42080"
+	httpPort := "42080"
+	httpAddr := ":" + httpPort
 	httpsAddr := ":44369"
 	log.Printf("starting http server at %q", httpAddr)
 	serverErrs := make(chan error, 2)
 	go func() {
 		err := http.ListenAndServe(httpAddr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var buf bytes.Buffer
-			r.Write(newIndentWriter(&buf, "  "))
-			log.Printf("received http request:\n%s", bytes.TrimSpace(buf.Bytes()))
-			if r.Method == http.MethodConnect {
-				handleConnect(w, "localhost"+httpsAddr)
-				return
+			log.Printf("received http request:\n%s", requestLogString(r))
+			err := func() error {
+				if r.Method == http.MethodConnect {
+					handleConnect(w, "localhost"+httpsAddr)
+					return nil
+				}
+				if serveBtLink(w, r) {
+					return nil
+				}
+				if ok, err := serveDynamicPac(w, r, httpPort); ok {
+					return err
+				}
+				http.NotFound(w, r)
+				return nil
+			}()
+			if err != nil {
+				log.Printf("error in http server handler: %v", err)
 			}
-			reverseProxy(w, r)
-			return
-			log.Printf("unhandled method %q", r.Method)
-			http.Error(w, fmt.Sprintf("unhandled method %q", r.Method), http.StatusNotImplemented)
 		}))
 		log.Printf("http server returned: %v", err)
 		serverErrs <- err
@@ -131,17 +185,17 @@ func proxy() error {
 		s := http.Server{
 			Addr: httpsAddr,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var buf bytes.Buffer
-				r.Write(newIndentWriter(&buf, "  "))
-				log.Printf("received request over tls:\n%s", bytes.TrimSpace(buf.Bytes()))
-				if r.Method == http.MethodConnect {
-					handleConnect(w, "localhost:42070")
-					return
+				log.Printf("received request over tls:\n%s", requestLogString(r))
+				err := func() error {
+					if serveBtLink(w, r) {
+						return nil
+					}
+					reverseProxy(w, r)
+					return nil
+				}()
+				if err != nil {
+					log.Printf("error in https server handler: %v", err)
 				}
-				reverseProxy(w, r)
-				return
-				log.Printf("unhandled method %q", r.Method)
-				http.Error(w, fmt.Sprintf("unhandled method %q", r.Method), http.StatusNotImplemented)
 			}),
 			TLSConfig: &tls.Config{
 				GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
