@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -100,7 +101,7 @@ func mainErr() error {
 	cmd := os.Args[1]
 	switch cmd {
 	case "proxy":
-		return proxy()
+		return proxy(os.Args[2:])
 	case "gencert":
 		return genCert(os.Args[2:])
 	default:
@@ -142,16 +143,56 @@ func requestLogString(r *http.Request) []byte {
 	return bytes.TrimSpace(buf.Bytes())
 }
 
-func serveBtLink(w http.ResponseWriter, r *http.Request) bool {
+type confluenceHandler struct {
+	clientCert       tls.Certificate
+	confluenceHost   string
+	confluenceScheme string
+}
+
+func (ch confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih string, path string) {
+	(&httputil.ReverseProxy{
+		Director: func(r *http.Request) {
+			r.URL.Host = ch.confluenceHost
+			r.URL.Scheme = ch.confluenceScheme
+			r.URL.Path = "/data"
+			r.URL.RawQuery = url.Values{"ih": {ih}, "path": {path}}.Encode()
+		},
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates:       []tls.Certificate{ch.clientCert},
+				InsecureSkipVerify: true,
+			},
+		},
+	}).ServeHTTP(w, r)
+}
+
+type handler struct {
+	confluence confluenceHandler
+}
+
+func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
 	if !strings.HasSuffix(r.Host, ".bt") {
 		return false
+	}
+	if strings.HasSuffix(r.Host, ".ih.bt") {
+		h.confluence.data(w, r, strings.TrimSuffix(r.Host, ".ih.bt"), r.URL.Path[1:])
+		return true
 	}
 	http.Error(w, "not implemented yet", http.StatusNotImplemented)
 	return true
 }
 
-func proxy() error {
+func proxy(args []string) error {
+	confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
+	if err != nil {
+		return err
+	}
+	handler := handler{confluenceHandler{
+		clientCert:       confluenceClientCert,
+		confluenceHost:   args[1],
+		confluenceScheme: args[0],
+	}}
 	httpPort := "42080"
 	httpAddr := ":" + httpPort
 	httpsAddr := ":44369"
@@ -165,7 +206,7 @@ func proxy() error {
 					handleConnect(w, "localhost"+httpsAddr)
 					return nil
 				}
-				if serveBtLink(w, r) {
+				if handler.serveBtLink(w, r) {
 					return nil
 				}
 				if ok, err := serveDynamicPac(w, r, httpPort); ok {
@@ -187,10 +228,12 @@ func proxy() error {
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				log.Printf("received request over tls:\n%s", requestLogString(r))
 				err := func() error {
-					if serveBtLink(w, r) {
+					if handler.serveBtLink(w, r) {
 						return nil
 					}
-					reverseProxy(w, r)
+					if ok, err := serveDynamicPac(w, r, httpPort); ok {
+						return err
+					}
 					return nil
 				}()
 				if err != nil {
