@@ -201,9 +201,10 @@ func proxy(args []string) error {
 		confluenceHost:   args[1],
 		confluenceScheme: args[0],
 	}}
-	httpPort := "42080"
+	httpPort := args[2] // Make the default 42080
 	httpAddr := ":" + httpPort
-	httpsAddr := ":44369"
+	httpsPort := args[3] // Make sure default is 44369
+	httpsAddr := ":" + httpsPort
 	log.Printf("starting http server at %q", httpAddr)
 	serverErrs := make(chan error, 2)
 	go func() {
