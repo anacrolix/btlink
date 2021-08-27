@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"golang.org/x/crypto/acme/autocert"
 )
 
 type indentWriter struct {
@@ -205,9 +207,9 @@ func proxy(args []string) error {
 	httpAddr := ":" + httpPort
 	httpsPort := args[3] // Make sure default is 44369
 	httpsAddr := ":" + httpsPort
-	log.Printf("starting http server at %q", httpAddr)
 	serverErrs := make(chan error, 2)
 	go func() {
+		log.Printf("starting http server at %q", httpAddr)
 		err := http.ListenAndServe(httpAddr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("received http request:\n%s", requestLogString(r))
 			err := func() error {
@@ -233,6 +235,45 @@ func proxy(args []string) error {
 		serverErrs <- err
 	}()
 	go func() {
+		var certs []tls.Certificate
+		cert, err := tls.LoadX509KeyPair("wildcard.bt.pem", "ca.key")
+		if err != nil {
+			log.Printf("error loading bt wildcard cert: %v", err)
+		} else {
+			certs = append(certs, cert)
+		}
+		cert, err = tls.LoadX509KeyPair("localhost.pem", "ca.key")
+		if err != nil {
+			log.Printf("error loading localhost cert: %v", err)
+		} else {
+			certs = append(certs, cert)
+		}
+		autocertManager := autocert.Manager{
+			Prompt:     autocert.AcceptTOS,
+			Cache:      autocert.DirCache("autocert-cache"),
+			HostPolicy: autocert.HostWhitelist("btlink.anacrolix.link"),
+			Email:      "anacrolix+btlink@gmail.com",
+		}
+		tlsConfig := &tls.Config{
+			//Certificates: certs,
+			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				for _, cert := range certs {
+					if info.SupportsCertificate(&cert) == nil {
+						return &cert, nil
+					}
+				}
+				return autocertManager.GetCertificate(info)
+			},
+			//GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			//	cert, err := tls.LoadX509KeyPair(info.ServerName+".pem", "ca.key")
+			//	if err == nil {
+			//		return &cert, nil
+			//	}
+			//	log.Printf("error getting certificate for %q: %v", info.ServerName, err)
+			//	cert, err = tls.LoadX509KeyPair("ca.pem", "ca.key")
+			//	return &cert, err
+			//},
+		}
 		s := http.Server{
 			Addr: httpsAddr,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -258,20 +299,10 @@ func proxy(args []string) error {
 					log.Printf("error in https server handler: %v", err)
 				}
 			}),
-			TLSConfig: &tls.Config{
-				GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-					cert, err := tls.LoadX509KeyPair(info.ServerName+".pem", "ca.key")
-					if err == nil {
-						return &cert, nil
-					}
-					log.Printf("error getting certificate for %q: %v", info.ServerName, err)
-					cert, err = tls.LoadX509KeyPair("ca.pem", "ca.key")
-					return &cert, err
-				},
-			},
+			TLSConfig: tlsConfig,
 		}
 		log.Printf("starting https server at %q", s.Addr)
-		err := s.ListenAndServeTLS("ca.pem", "ca.key")
+		err = s.ListenAndServeTLS("", "")
 		log.Printf("https server returned: %v", err)
 		serverErrs <- err
 	}()

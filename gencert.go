@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -34,8 +35,11 @@ func genCert(args []string) (err error) {
 	//	return err
 	//}
 	cert, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: args[0],
+		},
 		SerialNumber: big.NewInt(0),
-		DNSNames:     []string{args[0]},
+		DNSNames:     args[1:],
 		NotAfter:     time.Now().AddDate(10, 0, 0),
 	}, caCert, &privKey.PublicKey, privKey)
 	if err != nil {
