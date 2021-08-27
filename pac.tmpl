@@ -2,7 +2,7 @@ function FindProxyForURL(url, host) {
   if (
     dnsDomainIs(host, ".bt")
   ) {
-    return "PROXY {{ .HttpProxy }}";
+    return "HTTPS {{ .HttpsProxy }}; PROXY {{ .HttpProxy }}";
   } else {
     return "DIRECT";
   }

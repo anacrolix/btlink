@@ -117,10 +117,11 @@ func mainErr() error {
 var proxyPacTmpl string
 
 type pacData struct {
-	HttpProxy string
+	HttpProxy  string
+	HttpsProxy string
 }
 
-func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string) (ok bool, err error) {
+func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string, httpsProxyPort string) (ok bool, err error) {
 	if r.URL.Path != "/.btlink/proxy.pac" {
 		return
 	}
@@ -128,13 +129,16 @@ func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort strin
 	t := template.Must(template.New("").Parse(proxyPacTmpl))
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
-		return
+		host = r.Host
 	}
 	// Chrome seems to ignore the inline, but does pay attention to the filename. It's just nice for
 	// end users to be able to view what they're getting remotely.
 	w.Header().Set("Content-Disposition", "inline; filename=btlink.pac")
 	w.Header().Set("Content-Type", `application/x-ns-proxy-autoconfig`)
-	err = t.Execute(w, pacData{HttpProxy: net.JoinHostPort(host, httpProxyPort)})
+	err = t.Execute(w, pacData{
+		HttpProxy:  net.JoinHostPort(host, httpProxyPort),
+		HttpsProxy: net.JoinHostPort(host, httpsProxyPort),
+	})
 	if err != nil {
 		err = fmt.Errorf("executing template: %w", err)
 	}
@@ -207,13 +211,14 @@ func proxy(args []string) error {
 			log.Printf("received http request:\n%s", requestLogString(r))
 			err := func() error {
 				if r.Method == http.MethodConnect {
+					// We serve TLS by looping back to the HTTPS handler on this host.
 					handleConnect(w, "localhost"+httpsAddr)
 					return nil
 				}
 				if handler.serveBtLink(w, r) {
 					return nil
 				}
-				if ok, err := serveDynamicPac(w, r, httpPort); ok {
+				if ok, err := serveDynamicPac(w, r, httpPort, httpsPort); ok {
 					return err
 				}
 				http.NotFound(w, r)
@@ -232,12 +237,20 @@ func proxy(args []string) error {
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				log.Printf("received request over tls:\n%s", requestLogString(r))
 				err := func() error {
+					// Connect can be passed to a HTTPS proxy endpoint. We want to handle this
+					// ourselves, so we loop it back too.
+					if r.Method == http.MethodConnect {
+						// We serve TLS by looping back to the HTTPS handler on this host.
+						handleConnect(w, "localhost"+httpsAddr)
+						return nil
+					}
 					if handler.serveBtLink(w, r) {
 						return nil
 					}
-					if ok, err := serveDynamicPac(w, r, httpPort); ok {
+					if ok, err := serveDynamicPac(w, r, httpPort, httpsPort); ok {
 						return err
 					}
+					http.NotFound(w, r)
 					return nil
 				}()
 				if err != nil {
@@ -246,8 +259,12 @@ func proxy(args []string) error {
 			}),
 			TLSConfig: &tls.Config{
 				GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-					log.Printf("getting certificate for %q", info.ServerName)
 					cert, err := tls.LoadX509KeyPair(info.ServerName+".pem", "ca.key")
+					if err == nil {
+						return &cert, nil
+					}
+					log.Printf("error getting certificate for %q: %v", info.ServerName, err)
+					cert, err = tls.LoadX509KeyPair("ca.pem", "ca.key")
 					return &cert, err
 				},
 			},
