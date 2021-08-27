@@ -194,7 +194,7 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 func proxy(args []string) error {
 	confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
 	if err != nil {
-		return err
+		log.Printf("error loading confluence client cert: %v", err)
 	}
 	handler := handler{confluenceHandler{
 		clientCert:       confluenceClientCert,
