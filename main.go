@@ -68,7 +68,11 @@ func handleConnect(w http.ResponseWriter, destAddr string) {
 	}
 	defer conn.Close()
 	w.WriteHeader(http.StatusOK)
-	rConn, _, err := w.(http.Hijacker).Hijack()
+	w.(http.Flusher).Flush()
+	rConn, buf, err := w.(http.Hijacker).Hijack()
+	if buf.Reader.Buffered() != 0 || buf.Writer.Buffered() != 0 {
+		log.Printf("hijacked connection has %v unread and %v unwritten", buf.Reader.Buffered(), buf.Writer.Buffered())
+	}
 	if err != nil {
 		log.Printf("error hijacking connect request: %v", err)
 		return
