@@ -123,11 +123,7 @@ type pacData struct {
 	HttpsProxy string
 }
 
-func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string, httpsProxyPort string) (ok bool, err error) {
-	if r.URL.Path != "/.btlink/proxy.pac" {
-		return
-	}
-	ok = true
+func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string, httpsProxyPort string) error {
 	t := template.Must(template.New("").Parse(proxyPacTmpl))
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
@@ -144,7 +140,7 @@ func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort strin
 	if err != nil {
 		err = fmt.Errorf("executing template: %w", err)
 	}
-	return
+	return err
 }
 
 func requestLogString(r *http.Request) []byte {
@@ -207,12 +203,28 @@ func proxy(args []string) error {
 	httpAddr := ":" + httpPort
 	httpsPort := args[3] // Make sure default is 44369
 	httpsAddr := ":" + httpsPort
-	serverErrs := make(chan error, 2)
-	go func() {
-		log.Printf("starting http server at %q", httpAddr)
-		err := http.ListenAndServe(httpAddr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("received http request:\n%s", requestLogString(r))
+	proxyMux := http.NewServeMux()
+	proxyMux.HandleFunc("/.btlink/proxy.pac", func(w http.ResponseWriter, r *http.Request) {
+		err := serveDynamicPac(w, r, httpPort, httpsPort)
+		if err != nil {
+			log.Printf("error serving dynamic pac: %v", err)
+		}
+	})
+	proxyMux.HandleFunc("/.btlink/rootca.pem", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "ca.pem")
+	})
+	autocertManager := autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache("autocert-cache"),
+		HostPolicy: autocert.HostWhitelist("btlink.anacrolix.link"),
+		Email:      "anacrolix+btlink@gmail.com",
+	}
+	proxyHandler := func(logPrefix string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("%v: received request\n%s", logPrefix, requestLogString(r))
 			err := func() error {
+				// Connect can be passed to a HTTPS proxy endpoint. We want to handle this
+				// ourselves, so we loop it back too. This also works if we receive CONNECT over HTTPS.
 				if r.Method == http.MethodConnect {
 					// We serve TLS by looping back to the HTTPS handler on this host.
 					handleConnect(w, "localhost"+httpsAddr)
@@ -221,16 +233,18 @@ func proxy(args []string) error {
 				if handler.serveBtLink(w, r) {
 					return nil
 				}
-				if ok, err := serveDynamicPac(w, r, httpPort, httpsPort); ok {
-					return err
-				}
-				http.NotFound(w, r)
+				proxyMux.ServeHTTP(w, r)
 				return nil
 			}()
 			if err != nil {
-				log.Printf("error in http server handler: %v", err)
+				log.Printf("%v: error in proxy handler: %v", logPrefix, err)
 			}
-		}))
+		})
+	}
+	serverErrs := make(chan error, 2)
+	go func() {
+		log.Printf("starting http server at %q", httpAddr)
+		err := http.ListenAndServe(httpAddr, autocertManager.HTTPHandler(proxyHandler("http server")))
 		log.Printf("http server returned: %v", err)
 		serverErrs <- err
 	}()
@@ -248,14 +262,7 @@ func proxy(args []string) error {
 		} else {
 			certs = append(certs, cert)
 		}
-		autocertManager := autocert.Manager{
-			Prompt:     autocert.AcceptTOS,
-			Cache:      autocert.DirCache("autocert-cache"),
-			HostPolicy: autocert.HostWhitelist("btlink.anacrolix.link"),
-			Email:      "anacrolix+btlink@gmail.com",
-		}
 		tlsConfig := &tls.Config{
-			//Certificates: certs,
 			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 				for _, cert := range certs {
 					if info.SupportsCertificate(&cert) == nil {
@@ -264,41 +271,10 @@ func proxy(args []string) error {
 				}
 				return autocertManager.GetCertificate(info)
 			},
-			//GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			//	cert, err := tls.LoadX509KeyPair(info.ServerName+".pem", "ca.key")
-			//	if err == nil {
-			//		return &cert, nil
-			//	}
-			//	log.Printf("error getting certificate for %q: %v", info.ServerName, err)
-			//	cert, err = tls.LoadX509KeyPair("ca.pem", "ca.key")
-			//	return &cert, err
-			//},
 		}
 		s := http.Server{
-			Addr: httpsAddr,
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				log.Printf("received request over tls:\n%s", requestLogString(r))
-				err := func() error {
-					// Connect can be passed to a HTTPS proxy endpoint. We want to handle this
-					// ourselves, so we loop it back too.
-					if r.Method == http.MethodConnect {
-						// We serve TLS by looping back to the HTTPS handler on this host.
-						handleConnect(w, "localhost"+httpsAddr)
-						return nil
-					}
-					if handler.serveBtLink(w, r) {
-						return nil
-					}
-					if ok, err := serveDynamicPac(w, r, httpPort, httpsPort); ok {
-						return err
-					}
-					http.NotFound(w, r)
-					return nil
-				}()
-				if err != nil {
-					log.Printf("error in https server handler: %v", err)
-				}
-			}),
+			Addr:      httpsAddr,
+			Handler:   proxyHandler("tls http server"),
 			TLSConfig: tlsConfig,
 		}
 		log.Printf("starting https server at %q", s.Addr)
