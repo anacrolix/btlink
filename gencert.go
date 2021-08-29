@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// https://github.com/golang/go/issues/33310#issuecomment-537251383
+var maxSerialNumber = new(big.Int).SetBytes([]byte{127, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255})
+
 func genCert(args []string) (err error) {
 	privKeyBytes, err := os.ReadFile("ca.key")
 	if err != nil {
@@ -34,13 +37,20 @@ func genCert(args []string) (err error) {
 	//if err != nil {
 	//	return err
 	//}
+	serialNumber, err := rand.Int(rand.Reader, maxSerialNumber)
+	if err != nil {
+		return
+	}
 	cert, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: args[0],
+			Organization:       []string{"btlink"},
+			OrganizationalUnit: []string{"root CA"},
+			CommonName:         args[0],
 		},
-		SerialNumber: big.NewInt(0),
+		SerialNumber: serialNumber,
 		DNSNames:     args[1:],
 		NotAfter:     time.Now().AddDate(10, 0, 0),
+		NotBefore:    time.Now(),
 	}, caCert, &privKey.PublicKey, privKey)
 	if err != nil {
 		return err

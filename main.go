@@ -16,6 +16,7 @@ import (
 	"sync"
 	"text/template"
 
+	"github.com/anacrolix/envpprof"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -55,6 +56,7 @@ func (me *indentWriter) Write(p []byte) (n int, err error) {
 }
 
 func main() {
+	defer envpprof.Stop()
 	err := mainErr()
 	if err != nil {
 		log.Printf("error in main: %v", err)
@@ -62,6 +64,12 @@ func main() {
 }
 
 func handleConnect(w http.ResponseWriter, destAddr string) {
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		log.Printf("can't hijack response writer %v", w)
+		http.Error(w, "can't hijack response writer", http.StatusConflict)
+		return
+	}
 	conn, err := net.Dial("tcp", destAddr)
 	if err != nil {
 		log.Printf("error dialling %q: %v", destAddr, err)
@@ -71,7 +79,8 @@ func handleConnect(w http.ResponseWriter, destAddr string) {
 	defer conn.Close()
 	w.WriteHeader(http.StatusOK)
 	w.(http.Flusher).Flush()
-	rConn, buf, err := w.(http.Hijacker).Hijack()
+
+	rConn, buf, err := hijacker.Hijack()
 	if buf.Reader.Buffered() != 0 || buf.Writer.Buffered() != 0 {
 		log.Printf("hijacked connection has %v unread and %v unwritten", buf.Reader.Buffered(), buf.Writer.Buffered())
 	}
@@ -82,14 +91,20 @@ func handleConnect(w http.ResponseWriter, destAddr string) {
 	defer rConn.Close()
 	var wg sync.WaitGroup
 	wg.Add(2)
+	copyErrs := make(chan error, 2)
 	go func() {
 		defer wg.Done()
-		io.Copy(rConn, conn)
+		defer conn.Close()
+		_, err := io.Copy(rConn, conn)
+		copyErrs <- err
 	}()
 	go func() {
 		defer wg.Done()
-		io.Copy(conn, rConn)
+		defer rConn.Close()
+		_, err := io.Copy(conn, rConn)
+		copyErrs <- err
 	}()
+	<-copyErrs
 	wg.Wait()
 }
 
