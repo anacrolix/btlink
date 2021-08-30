@@ -68,7 +68,7 @@ Gateways are HTTP servers that serve according to the [Addressing schema](#addre
 
 ### Chrome
 
-For once there appears to be no evil here. Next stop: Google stops maintaining Chrome.
+Chrome must be restarted on Windows after installing root CA certificate.
 
 ### Firefox
 
