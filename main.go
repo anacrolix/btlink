@@ -97,13 +97,17 @@ func handleConnect(w http.ResponseWriter, destAddr string, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		_, err := io.Copy(rConn, conn)
-		log.Printf("error copying from origin to proxy client: %v", err)
+		if err != nil {
+			log.Printf("error copying from origin to proxy client: %v", err)
+		}
 		copyErrs <- err
 	}()
 	go func() {
 		defer wg.Done()
 		_, err := io.Copy(conn, rConn)
-		log.Printf("error copying from proxy client to origin: %v", err)
+		if err != nil {
+			log.Printf("error copying from proxy client to origin: %v", err)
+		}
 		copyErrs <- err
 	}()
 	//<-copyErrs
