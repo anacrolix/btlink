@@ -49,8 +49,9 @@ func genCert(args []string) (err error) {
 		},
 		SerialNumber: serialNumber,
 		DNSNames:     args[1:],
-		NotAfter:     time.Now().AddDate(10, 0, 0),
-		NotBefore:    time.Now(),
+		// https://stackoverflow.com/a/65239775/149482
+		NotAfter:  time.Now().AddDate(1, 0, 0),
+		NotBefore: time.Now(),
 	}, caCert, &privKey.PublicKey, privKey)
 	if err != nil {
 		return err
