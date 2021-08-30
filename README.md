@@ -2,6 +2,8 @@
 
 btlink implements a HTTP(s) addressing scheme for BitTorrent.
 
+![btlink slogan](https://i.kym-cdn.com/photos/images/newsfeed/000/335/042/72f.png)
+
 ## Architecture
 
 ### Domain schema
