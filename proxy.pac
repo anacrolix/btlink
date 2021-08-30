@@ -1,8 +1,8 @@
 function FindProxyForURL(url, host) {
   if (
-    dnsDomainIs(host, "chromecast.link")
+    dnsDomainIs(host, ".bt")
   ) {
-    return "PROXY localhost:42080";
+    return "HTTPS localhost:44369; PROXY localhost:42080; DIRECT";
   } else {
     return "DIRECT";
   }

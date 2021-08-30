@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/anacrolix/envpprof"
 	"golang.org/x/crypto/acme/autocert"
@@ -63,11 +64,13 @@ func main() {
 	}
 }
 
-func handleConnect(w http.ResponseWriter, destAddr string) {
+func handleConnect(w http.ResponseWriter, destAddr string, r *http.Request) {
+	r.Body.Close()
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		log.Printf("can't hijack response writer %v", w)
-		http.Error(w, "can't hijack response writer", http.StatusConflict)
+		// Probably tried over HTTP2, dumbass browsers...
+		http.Error(w, "can't hijack response writer", http.StatusBadRequest)
 		return
 	}
 	conn, err := net.Dial("tcp", destAddr)
@@ -77,34 +80,33 @@ func handleConnect(w http.ResponseWriter, destAddr string) {
 		return
 	}
 	defer conn.Close()
-	w.WriteHeader(http.StatusOK)
-	w.(http.Flusher).Flush()
-
 	rConn, buf, err := hijacker.Hijack()
-	if buf.Reader.Buffered() != 0 || buf.Writer.Buffered() != 0 {
-		log.Printf("hijacked connection has %v unread and %v unwritten", buf.Reader.Buffered(), buf.Writer.Buffered())
-	}
 	if err != nil {
-		log.Printf("error hijacking connect request: %v", err)
+		log.Printf("error hijacking connect response: %v", err)
+		http.Error(w, "error hijacking response writer: %v", http.StatusServiceUnavailable)
 		return
 	}
 	defer rConn.Close()
+	if buf.Reader.Buffered() != 0 || buf.Writer.Buffered() != 0 {
+		log.Printf("hijacked connection has %v unread and %v unwritten", buf.Reader.Buffered(), buf.Writer.Buffered())
+	}
+	rConn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 	var wg sync.WaitGroup
 	wg.Add(2)
 	copyErrs := make(chan error, 2)
 	go func() {
 		defer wg.Done()
-		defer conn.Close()
 		_, err := io.Copy(rConn, conn)
+		log.Printf("error copying from origin to proxy client: %v", err)
 		copyErrs <- err
 	}()
 	go func() {
 		defer wg.Done()
-		defer rConn.Close()
 		_, err := io.Copy(conn, rConn)
+		log.Printf("error copying from proxy client to origin: %v", err)
 		copyErrs <- err
 	}()
-	<-copyErrs
+	//<-copyErrs
 	wg.Wait()
 }
 
@@ -242,7 +244,7 @@ func proxy(args []string) error {
 				// ourselves, so we loop it back too. This also works if we receive CONNECT over HTTPS.
 				if r.Method == http.MethodConnect {
 					// We serve TLS by looping back to the HTTPS handler on this host.
-					handleConnect(w, "localhost"+httpsAddr)
+					handleConnect(w, "localhost"+httpsAddr, r)
 					return nil
 				}
 				if handler.serveBtLink(w, r) {
@@ -288,9 +290,10 @@ func proxy(args []string) error {
 			},
 		}
 		s := http.Server{
-			Addr:      httpsAddr,
-			Handler:   proxyHandler("tls http server"),
-			TLSConfig: tlsConfig,
+			Addr:        httpsAddr,
+			Handler:     proxyHandler("tls http server"),
+			TLSConfig:   tlsConfig,
+			ReadTimeout: 5 * time.Second,
 		}
 		log.Printf("starting https server at %q", s.Addr)
 		err = s.ListenAndServeTLS("", "")
