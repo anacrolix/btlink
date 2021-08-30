@@ -1,6 +1,6 @@
 # btlink
 
-btlink exposes a HTTP(s) addressing scheme for BitTorrent.
+btlink implements a HTTP(s) addressing scheme for BitTorrent.
 
 ## Architecture
 
@@ -30,6 +30,10 @@ Fetches an immutable item from the DHT. `44` is a reference to [BEP 44]. The ret
 
 Files within a torrent are exposed with a path equal to the components of the `path` list in the `info` `files` field joined with `/`. There may be additional special paths exposed within at `/.btlink/` and `/.well-known/` as found appropriate.
 
+#### Proxy btlink schema
+
+Proxies can serve a dynamic PAC file from `/.btlink/proxy.pac`, and their CA certificate from `/.btlink/rootca.pem`.
+
 ## Link Records
 
 Domains may link/alias into the `.bt` address scheme by use of a `_btlink` DNS record on the linked domain. For example `chromecast.link` might be hosted on btlink, by way of a `_btlink.chromecast.link` TXT record. The `_btlink` record contains a [magnet link] (or just the btlink domain) where the content will be found.
@@ -48,17 +52,17 @@ Here proxies and gateways are described separately, but it's likely that in init
 
 ### Proxies
 
-HTTP proxies can be used to transparently provide the address mapping without modifying HTTP client software. Support for configuring HTTP proxies is well supported and common due to ubiquitous use on corporate and government systems, as well as by anti-censorship and privacy advocates.
+Proxies are used to transparently provide a mapping from URLs to BitTorrent without modifying HTTP client software. Support for configuring HTTP proxies is well-supported and common due to ubiquitous use on corporate and government systems, as well as by anti-censorship and privacy advocates.
 
-Proxies route `.bt` and domains with `_btlink` records to a gateway. They may expose endpoints serving PAC files for trivial end-user configuration.
+Proxies route `.bt` and domains with `_btlink` records to a gateway. They may also expose [special paths](#proxy-btlink-schema) for configuration.
 
-Proxies can set a header to tell servers that they their clients support btlink. This means that dynamic sites can provide generic btlink URLs without explicitly selecting a public gateway as a fallback.
+Proxies can set a header to tell origin servers that their clients support btlink. This means that dynamic sites can provide generic btlink URLs without explicitly selecting a public gateway as a fallback.
 
 [PAC]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Proxy_servers_and_tunneling/Proxy_Auto-Configuration_PAC_file
 
 ### Gateways
 
-Gateways are HTTP servers that serve according to the [Addressing schema](#addressing-schema). They will also intercept requests to domains with `_btlink` records and serve those via BitTorrent if possible.
+Gateways are HTTP servers that serve according to the [Addressing schema](#addressing-schema). They will also intercept requests to domains with `_btlink` records and serve those via BitTorrent if possible. Gateways can run behind reverse proxies and CDNs as they serve immutable, long-lived content.
 
 ## Browsers
 
@@ -72,8 +76,20 @@ Firefox appears not to support name constraints in CA certs (only tested in the 
 
 ### Safari
 
-Safari will hang on proxy CONNECT attempts if they respond with `Transfer-Encoding: chunked` (https://feedbackassistant.apple.com/feedback/9578066, possibly not publicly viewable). 
+Safari will hang on proxy CONNECT attempts if they respond with `Transfer-Encoding: chunked` (https://feedbackassistant.apple.com/feedback/9578066, possibly not publicly viewable). Safari does not seem to support HTTPS proxies.
 
 ### curl
 
 Does not appear to use the system keychain on MacOS. Passing `--proxy-cacert` and `--cacert` will let you specify a btlink CA file.
+
+## TODO
+
+ * Implement a secure channel to proxies for Safari.
+ * See if Firefox supports name constraints on intermediate CAs.
+ * Separate gateways and proxies.
+
+## Open questions
+
+ * Can we have a common root certificate shared by all gateways/proxies?
+ * Does Safari support SOCKS? Via PAC?
+ * Should the domain schema be collapsed so that a single wildcard certificate is sufficient?

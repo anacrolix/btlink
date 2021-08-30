@@ -2,7 +2,9 @@ function FindProxyForURL(url, host) {
   if (
     dnsDomainIs(host, ".bt")
   ) {
-    return "HTTPS {{ .HttpsProxy }}; PROXY {{ .HttpProxy }}";
+    // Safari doesn't support HTTPS proxies. If the btlink root domain matched an actual gateway we
+    // could append DIRECT here.
+    return "HTTPS {{.HttpsProxy }}; PROXY {{ .HttpProxy }}";
   } else {
     return "DIRECT";
   }
