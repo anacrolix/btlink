@@ -59,3 +59,21 @@ Proxies can set a header to tell servers that they their clients support btlink.
 ### Gateways
 
 Gateways are HTTP servers that serve according to the [Addressing schema](#addressing-schema). They will also intercept requests to domains with `_btlink` records and serve those via BitTorrent if possible.
+
+## Browsers
+
+### Chrome
+
+For once there appears to be no evil here. Next stop: Google stops maintaining Chrome.
+
+### Firefox
+
+Firefox appears not to support name constraints in CA certs (only tested in the root cert though). It will reject certificates if it tries to match a higher-level wildcard before the one that would pass (https://bugzilla.mozilla.org/show_bug.cgi?id=1728009). It seems to require ownership information (subject O and OU fields?) on issuer and leaf certificate. It also appears to need restarting to load certificates from the system keychain. It will establish http2 connections to proxies if allowed, which doesn't work.
+
+### Safari
+
+Safari will hang on proxy CONNECT attempts if they respond with `Transfer-Encoding: chunked` (https://feedbackassistant.apple.com/feedback/9578066, possibly not publicly viewable). 
+
+### curl
+
+Does not appear to use the system keychain on MacOS. Passing `--proxy-cacert` and `--cacert` will let you specify a btlink CA file.
