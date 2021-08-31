@@ -4,6 +4,10 @@ btlink implements a HTTP(s) addressing scheme for BitTorrent.
 
 ![btlink slogan](https://i.kym-cdn.com/photos/images/newsfeed/000/335/042/72f.png)
 
+## Naming
+
+btlink is the working name, due to the combination of BitTorrent, HTTP URL "links" and the plan to implement something similar to [DNSLink](https://dnslink.io/). Alternative names might invoke something to do with swarms and webs, due to the overlap in terminology there in the use of BitTorrent and HTTP. Shelob, or the Flood for example.
+
 ## Architecture
 
 ### Domain schema
