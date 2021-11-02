@@ -78,7 +78,7 @@ Chrome must be restarted on Windows after installing root CA certificate.
 
 ### Firefox
 
-Firefox appears not to support name constraints in CA certs (only tested in the root cert though). It will reject certificates if it tries to match a higher-level wildcard before the one that would pass (https://bugzilla.mozilla.org/show_bug.cgi?id=1728009). It seems to require ownership information (subject O and OU fields?) on issuer and leaf certificate. It also appears to need restarting to load certificates from the system keychain. It will establish http2 connections to proxies if allowed, which doesn't work.
+Firefox will reject certificates with wildcard domains with less than 2 fixed labels (https://bugzilla.mozilla.org/show_bug.cgi?id=1728009). It seems to require ownership information (subject O and OU fields?) on issuer and leaf certificate. It also appears to need restarting to load certificates from the system keychain. It will establish http2 connections to proxies if possible, which doesn't work.
 
 ### Safari
 
