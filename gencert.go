@@ -9,12 +9,19 @@ import (
 	"math/big"
 	"os"
 	"time"
+
+	"github.com/anacrolix/args"
 )
 
 // https://github.com/golang/go/issues/33310#issuecomment-537251383
 var maxSerialNumber = new(big.Int).SetBytes([]byte{127, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255})
 
-func genCert(args []string) (err error) {
+func genCert(scc args.SubCmdCtx) (err error) {
+	var params struct {
+		CommonName string
+		DnsNames   []string
+	}
+	scc.Parse(args.FromStruct(&params)...)
 	privKeyBytes, err := os.ReadFile("ca.key")
 	if err != nil {
 		return err
@@ -45,10 +52,10 @@ func genCert(args []string) (err error) {
 		Subject: pkix.Name{
 			Organization:       []string{"btlink"},
 			OrganizationalUnit: []string{"root CA"},
-			CommonName:         args[0],
+			CommonName:         params.CommonName,
 		},
 		SerialNumber: serialNumber,
-		DNSNames:     args[1:],
+		DNSNames:     params.DnsNames,
 		// https://stackoverflow.com/a/65239775/149482
 		NotAfter:  time.Now().AddDate(1, 0, 0),
 		NotBefore: time.Now(),

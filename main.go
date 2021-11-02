@@ -11,12 +11,13 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
 
+	"github.com/anacrolix/args"
 	"github.com/anacrolix/envpprof"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -125,15 +126,11 @@ func reverseProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func mainErr() error {
-	cmd := os.Args[1]
-	switch cmd {
-	case "proxy":
-		return proxy(os.Args[2:])
-	case "gencert":
-		return genCert(os.Args[2:])
-	default:
-		return fmt.Errorf("unknown command: %q", cmd)
-	}
+	args.ParseMain(
+		args.Subcommand("proxy", proxy),
+		args.Subcommand("gencert", genCert),
+	)
+	return nil
 }
 
 //go:embed pac.tmpl
@@ -210,19 +207,43 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func proxy(args []string) error {
+func proxy(scc args.SubCmdCtx) error {
+	var confluenceHost, confluenceScheme string
+	var httpPortInt, httpsPortInt uint16 = 42080, 44369
+	scc.Parse(
+		args.Opt(args.OptOpt{
+			Long:     "confluence-host",
+			Target:   &confluenceHost,
+			Short:    'h',
+			Required: true,
+		}),
+		args.Opt(args.OptOpt{
+			Long:     "confluence-scheme",
+			Target:   &confluenceScheme,
+			Short:    's',
+			Required: true,
+		}),
+		args.Opt(args.OptOpt{
+			Long:   "http-port",
+			Target: &httpPortInt,
+		}),
+		args.Opt(args.OptOpt{
+			Long:   "https-port",
+			Target: &httpsPortInt,
+		}),
+	)
 	confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
 	if err != nil {
 		log.Printf("error loading confluence client cert: %v", err)
 	}
 	handler := handler{confluenceHandler{
 		clientCert:       confluenceClientCert,
-		confluenceHost:   args[1],
-		confluenceScheme: args[0],
+		confluenceHost:   confluenceHost,
+		confluenceScheme: confluenceScheme,
 	}}
-	httpPort := args[2] // Make the default 42080
+	httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 	httpAddr := ":" + httpPort
-	httpsPort := args[3] // Make sure default is 44369
+	httpsPort := strconv.FormatUint(uint64(httpsPortInt), 10) // Make sure default is 44369
 	httpsAddr := ":" + httpsPort
 	proxyMux := http.NewServeMux()
 	proxyMux.HandleFunc("/.btlink/proxy.pac", func(w http.ResponseWriter, r *http.Request) {
