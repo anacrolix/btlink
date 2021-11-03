@@ -18,8 +18,8 @@ var maxSerialNumber = new(big.Int).SetBytes([]byte{127, 255, 255, 255, 255, 255,
 
 func genCert(scc args.SubCmdCtx) (err error) {
 	var params struct {
-		CommonName string
-		DnsNames   []string
+		CommonName string   `arg:"positional"`
+		DnsNames   []string `arg:"positional" arity:"*"`
 	}
 	scc.Parse(args.FromStruct(&params)...)
 	privKeyBytes, err := os.ReadFile("ca.key")
