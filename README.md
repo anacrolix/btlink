@@ -75,6 +75,7 @@ Gateways are HTTP servers that serve according to the [Addressing schema](#addre
 ### Chrome
 
 Chrome must be restarted on Windows after installing root CA certificate.
+You can manually re-apply proxy settings via <chrome://net-internals/#proxy>.
 
 ### Firefox
 
