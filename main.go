@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	_ "embed"
 	"encoding/base32"
@@ -21,7 +22,10 @@ import (
 	"time"
 
 	"github.com/anacrolix/args"
+	"github.com/anacrolix/dht/v2/bep44"
+	"github.com/anacrolix/dht/v2/krpc"
 	"github.com/anacrolix/envpprof"
+	"github.com/anacrolix/torrent/bencode"
 	"github.com/multiformats/go-base36"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -203,12 +207,12 @@ func requestLogString(r *http.Request) []byte {
 }
 
 type confluenceHandler struct {
-	clientCert       tls.Certificate
-	confluenceHost   string
-	confluenceScheme string
+	confluenceHost      string
+	confluenceScheme    string
+	confluenceTransport http.Transport
 }
 
-func (ch confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih string, path string) {
+func (ch *confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih string, path string) {
 	(&httputil.ReverseProxy{
 		Director: func(r *http.Request) {
 			r.URL.Host = ch.confluenceHost
@@ -216,30 +220,85 @@ func (ch confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih stri
 			r.URL.Path = "/data"
 			r.URL.RawQuery = url.Values{"ih": {ih}, "path": {path}}.Encode()
 		},
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates:       []tls.Certificate{ch.clientCert},
-				InsecureSkipVerify: true,
-			},
-		},
+		Transport: &ch.confluenceTransport,
 	}).ServeHTTP(w, r)
+}
+
+func (ch *confluenceHandler) dhtGet(ctx context.Context, target string) (b []byte, err error) {
+	hc := http.Client{
+		Transport: &ch.confluenceTransport,
+	}
+	u := url.URL{
+		Scheme:   ch.confluenceScheme,
+		Host:     ch.confluenceHost,
+		Path:     "/bep44",
+		RawQuery: url.Values{"target": {target}}.Encode(),
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return
+	}
+	b, err = io.ReadAll(resp.Body)
+	return
 }
 
 type handler struct {
 	confluence confluenceHandler
+	//dhtItemCache *ristretto.Cache
+	//dhtItemDedup *singleflight.Group
+}
+
+func reverse(ss []string) {
+	for i := 0; i < len(ss)/2; i++ {
+		j := len(ss) - i - 1
+		ss[i], ss[j] = ss[j], ss[i]
+	}
 }
 
 func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
-	if !strings.HasSuffix(r.Host, ".bt") {
+	ss := strings.Split(r.Host, ".")
+	reverse(ss)
+	if ss[0] != "bt" {
 		return false
 	}
-	if strings.HasSuffix(r.Host, ".ih.bt") {
-		h.confluence.data(w, r, strings.TrimSuffix(r.Host, ".ih.bt"), r.URL.Path[1:])
+	ss = ss[1:]
+	if len(ss) == 0 {
+		http.Error(w, "not implemented yet", http.StatusNotImplemented)
 		return true
 	}
-	http.Error(w, "not implemented yet", http.StatusNotImplemented)
-	return true
+	switch ss[0] {
+	case "ih":
+		ss = ss[1:]
+		reverse(ss)
+		h.confluence.data(w, r, strings.Join(ss, "."), r.URL.Path[1:])
+		return true
+	case "pk":
+		ss = ss[1:]
+		var salt, pk []byte
+		switch len(ss) {
+		case 2:
+			salt = []byte(ss[1])
+			fallthrough
+		case 1:
+			pk, _ = base36.DecodeString(ss[0])
+		default:
+			http.Error(w, "bad host", http.StatusBadRequest)
+			return true
+		}
+		target := bep44.MakeMutableTarget(*(*[32]byte)(pk), salt)
+		b, err := h.confluence.dhtGet(r.Context(), hex.EncodeToString(target[:]))
+		if err != nil {
+			panic(err)
+		}
+		var bep46 krpc.Bep46Payload
+		bencode.Unmarshal(b, &bep46)
+		log.Printf("resolved %q to %x", r.Host, bep46.Ih)
+		h.confluence.data(w, r, hex.EncodeToString(bep46.Ih[:]), r.URL.Path[1:])
+		return true
+	}
+	panic("unimplemented")
 }
 
 func proxy(scc args.SubCmdCtx) error {
@@ -272,9 +331,14 @@ func proxy(scc args.SubCmdCtx) error {
 		log.Printf("error loading confluence client cert: %v", err)
 	}
 	handler := handler{confluenceHandler{
-		clientCert:       confluenceClientCert,
 		confluenceHost:   confluenceHost,
 		confluenceScheme: confluenceScheme,
+		confluenceTransport: http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates:       []tls.Certificate{confluenceClientCert},
+				InsecureSkipVerify: true,
+			},
+		},
 	}}
 	httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 	httpAddr := ":" + httpPort

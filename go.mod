@@ -3,17 +3,20 @@ module github.com/anacrolix/btlink
 go 1.17
 
 require (
-	github.com/anacrolix/args v0.2.1-0.20211103002536-ced6f976c4ee
-	github.com/anacrolix/envpprof v1.1.0
+	github.com/anacrolix/args v0.4.1-0.20211104085705-59f0fe94eb8f
+	github.com/anacrolix/dht/v2 v2.11.1-0.20211104092016-7295f2558a39
+	github.com/anacrolix/envpprof v1.1.1
+	github.com/anacrolix/torrent v1.35.1-0.20211104090255-eaeb38b18c6a
+	github.com/multiformats/go-base36 v0.1.0
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 )
 
 require (
-	github.com/anacrolix/log v0.6.0 // indirect
-	github.com/anacrolix/missinggo v1.2.1 // indirect
+	github.com/anacrolix/log v0.10.0 // indirect
+	github.com/anacrolix/missinggo v1.3.0 // indirect
+	github.com/anacrolix/missinggo/v2 v2.5.2 // indirect
 	github.com/bradfitz/iter v0.0.0-20191230175014-e8f45d346db8 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
-	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110 // indirect
-	golang.org/x/text v0.3.3 // indirect
-	gopkg.in/yaml.v2 v2.2.5 // indirect
+	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
+	golang.org/x/text v0.3.6 // indirect
 )
