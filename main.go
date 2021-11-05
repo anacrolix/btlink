@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"crypto/tls"
 	_ "embed"
+	"encoding/base32"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +22,7 @@ import (
 
 	"github.com/anacrolix/args"
 	"github.com/anacrolix/envpprof"
+	"github.com/multiformats/go-base36"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -129,6 +133,37 @@ func mainErr() error {
 	args.ParseMain(
 		args.Subcommand("proxy", proxy),
 		args.Subcommand("gencert", genCert),
+		args.Subcommand("convert", func(ctx args.SubCmdCtx) (err error) {
+			var input string
+			decoderChoice := args.Choice{
+				Long: "from",
+				Choices: map[string]interface{}{
+					"hex":       hex.DecodeString,
+					"base36":    base36.DecodeString,
+					"base32hex": base32.HexEncoding.DecodeString,
+				},
+				Default: "hex",
+			}
+			encoderChoice := args.Choice{
+				Long: "to",
+				Choices: map[string]interface{}{
+					"base64url": base64.URLEncoding.EncodeToString,
+					"base36lc":  base36.EncodeToStringLc,
+					"base32hex": base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString,
+					"hex":       hex.EncodeToString,
+				},
+			}
+			ctx.Parse(
+				args.Pos("input", &input),
+				decoderChoice.ToParam(),
+				encoderChoice.ToParam())
+			b, err := decoderChoice.SelectedValue().(func(string) ([]byte, error))(input)
+			if err != nil {
+				return fmt.Errorf("error decoding input: %w", err)
+			}
+			fmt.Println(encoderChoice.SelectedValue().(func([]byte) string)(b))
+			return nil
+		}),
 	)
 	return nil
 }
