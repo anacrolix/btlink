@@ -26,8 +26,10 @@ import (
 	"github.com/anacrolix/dht/v2/krpc"
 	"github.com/anacrolix/envpprof"
 	"github.com/anacrolix/torrent/bencode"
+	"github.com/dgraph-io/ristretto"
 	"github.com/multiformats/go-base36"
 	"golang.org/x/crypto/acme/autocert"
+	"golang.org/x/sync/singleflight"
 )
 
 type indentWriter struct {
@@ -234,19 +236,34 @@ func (ch *confluenceHandler) dhtGet(ctx context.Context, target string) (b []byt
 		Path:     "/bep44",
 		RawQuery: url.Values{"target": {target}}.Encode(),
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		panic(err)
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("unexpected response status code: %v", resp.StatusCode)
 		return
 	}
 	b, err = io.ReadAll(resp.Body)
 	return
 }
 
+type dhtItemCacheValue struct {
+	updated  time.Time
+	updating bool
+	payload  krpc.Bep46Payload
+}
+
 type handler struct {
-	confluence confluenceHandler
-	//dhtItemCache *ristretto.Cache
-	//dhtItemDedup *singleflight.Group
+	confluence           confluenceHandler
+	dhtItemCache         *ristretto.Cache
+	dhtItemCacheGetDedup singleflight.Group
+	dhtGetDedup          singleflight.Group
 }
 
 func reverse(ss []string) {
@@ -288,17 +305,67 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		target := bep44.MakeMutableTarget(*(*[32]byte)(pk), salt)
-		b, err := h.confluence.dhtGet(r.Context(), hex.EncodeToString(target[:]))
+		log.Printf("looking up infohash for %q at %x", r.Host, target)
+		bep46, err := h.getMutableInfohash(target)
 		if err != nil {
-			panic(err)
+			log.Printf("error resolving %q: %v", r.Host, err)
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return true
 		}
-		var bep46 krpc.Bep46Payload
-		bencode.Unmarshal(b, &bep46)
 		log.Printf("resolved %q to %x", r.Host, bep46.Ih)
 		h.confluence.data(w, r, hex.EncodeToString(bep46.Ih[:]), r.URL.Path[1:])
 		return true
 	}
 	panic("unimplemented")
+}
+
+func (h *handler) getMutableInfohash(target bep44.Target) (_ krpc.Bep46Payload, err error) {
+	ret, err, _ := h.dhtItemCacheGetDedup.Do(string(target[:]), func() (interface{}, error) {
+		v, ok := h.dhtItemCache.Get(target[:])
+		if ok {
+			v := v.(*dhtItemCacheValue)
+			stale := time.Since(v.updated) >= time.Minute
+			if !v.updating && stale {
+				log.Printf("initiating async refresh of cached dht item [target=%x]", target)
+				v.updating = true
+				go h.getMutableInfohashFromDht(target)
+			}
+			log.Printf("served dht item from cache [target=%x, stale=%v]", target, stale)
+			return v.payload, nil
+		}
+		return h.getMutableInfohashFromDht(target)
+	})
+	if err != nil {
+		return
+	}
+	return ret.(krpc.Bep46Payload), err
+}
+
+func (h *handler) getMutableInfohashFromDht(target bep44.Target) (_ krpc.Bep46Payload, err error) {
+	ret, err, _ := h.dhtGetDedup.Do(string(target[:]), func() (_ interface{}, err error) {
+		b, err := h.confluence.dhtGet(context.Background(), hex.EncodeToString(target[:]))
+		if err != nil {
+			err = fmt.Errorf("getting from dht via confluence: %w", err)
+			return
+		}
+		var bep46 krpc.Bep46Payload
+		err = bencode.Unmarshal(b, &bep46)
+		if err != nil {
+			err = fmt.Errorf("unmarshalling bep46 payload from confluence response: %w", err)
+			return
+		}
+		stored := h.dhtItemCache.Set(target[:], &dhtItemCacheValue{
+			updated:  time.Now(),
+			updating: false,
+			payload:  bep46,
+		}, 1)
+		log.Printf("caching dht item [target=%x, stored=%v]", target, stored)
+		return bep46, err
+	})
+	if err != nil {
+		return
+	}
+	return ret.(krpc.Bep46Payload), err
 }
 
 func proxy(scc args.SubCmdCtx) error {
@@ -330,16 +397,35 @@ func proxy(scc args.SubCmdCtx) error {
 	if err != nil {
 		log.Printf("error loading confluence client cert: %v", err)
 	}
-	handler := handler{confluenceHandler{
-		confluenceHost:   confluenceHost,
-		confluenceScheme: confluenceScheme,
-		confluenceTransport: http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates:       []tls.Certificate{confluenceClientCert},
-				InsecureSkipVerify: true,
+	dhtItemCache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 30,
+		// So we can trigger this sooner for testing.
+		MaxCost:     3,
+		BufferItems: 64,
+		// Because we don't represent the cost of cache items using bytes, but ristretto will add
+		// the internal cost for the key in bytes.
+		IgnoreInternalCost: true,
+		OnExit: func(val interface{}) {
+			v := val.(*dhtItemCacheValue)
+			log.Printf("value removed from dht item cache [item=%+v]", *v)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("new ristretto cache: %w", err)
+	}
+	handler := handler{
+		confluence: confluenceHandler{
+			confluenceHost:   confluenceHost,
+			confluenceScheme: confluenceScheme,
+			confluenceTransport: http.Transport{
+				TLSClientConfig: &tls.Config{
+					Certificates:       []tls.Certificate{confluenceClientCert},
+					InsecureSkipVerify: true,
+				},
 			},
 		},
-	}}
+		dhtItemCache: dhtItemCache,
+	}
 	httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 	httpAddr := ":" + httpPort
 	httpsPort := strconv.FormatUint(uint64(httpsPortInt), 10) // Make sure default is 44369
