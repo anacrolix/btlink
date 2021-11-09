@@ -12,19 +12,23 @@ btlink is the working name, due to the combination of BitTorrent, HTTP URL "link
 
 ### Domain schema
 
+#### Top-level domain
+
+The top-level domain to trigger proxy intervention, and for general identification of btlink domain addressing (referred to as `tld`) was `.bt`. However that may be incompatible with the [ccTLD of Bhutan](https://en.wikipedia.org/wiki/.bt) (See issue #2).
+
 Where possible, separate domains are used to reference different torrents to provide [origin isolation].
 
 [origin isolation]: https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy
 
-#### {infohash}.ih.bt/{[torrent path schema](#torrent-path-schema)}}
+#### {infohash}.ih.{tld}/{[torrent path schema](#torrent-path-schema)}}
 
 Files within a torrent are exposed via the URL path being the path components of the files join with `/`. Suitable headers may be included as determined. How is the info name field handled? Perhaps it is ignored, except for single-file torrents?
     
-#### {salt}.{public key}.pk.bt/{[torrent path schema](#torrent-path-schema)}}
+#### {salt}.{public key}.pk.{tld}/{[torrent path schema](#torrent-path-schema)}}
 
 Serves torrent corresponding to lookup of mutable DHT item. Salt is optional per [BEP 46]. This means that owners of a public key can also manage cookies for their salted subdomains (and potentially other resources that support a subdomain relationship like this).
 
-#### {target}.44.bt
+#### {target}.44.{tld}
 Fetches an immutable item from the DHT. `44` is a reference to [BEP 44]. The returned item is an encoded bencode value. Various path and query values might support conversion into other formats.
 
 [BEP 44]: http://bittorrent.org/beps/bep_0044.html
@@ -42,15 +46,15 @@ Proxies can serve a dynamic PAC file from `/.btlink/proxy.pac`, and their CA cer
 
 ## Link Records
 
-Domains may link/alias into the `.bt` address scheme by use of a `_btlink` DNS record on the linked domain. For example `chromecast.link` might be hosted on btlink, by way of a `_btlink.chromecast.link` TXT record. The `_btlink` record contains a [magnet link] (or just the btlink domain) where the content will be found.
+Domains may link/alias into the `.{tld}` address scheme by use of a `_btlink` DNS record on the linked domain. For example `chromecast.link` might be hosted on btlink, by way of a `_btlink.chromecast.link` TXT record. The `_btlink` record contains a [magnet link] (or just the btlink domain) where the content will be found.
 
 If a link record exists, it is possible to CNAME or ALIAS the parent domain to a btlink gateway to allow use by non-proxy-using clients.
 
 ### Magnet links
 
-Per [BEP 46], `magnet:?xs=urn:btpk:[ Public Key (Hex) ]&s=[ Salt (Hex) ]`, corresponding to the `.pk.bt` domain space.
+Per [BEP 46], `magnet:?xs=urn:btpk:[ Public Key (Hex) ]&s=[ Salt (Hex) ]`, corresponding to the `.pk.{tld}` domain space.
 
-Regular BitTorrent magnet links correspond to the `.ih.bt` domain space.
+Regular BitTorrent magnet links correspond to the `.ih.{tld}` domain space.
 
 ## Infrastructure
 
@@ -60,7 +64,7 @@ Here proxies and gateways are described separately, but it's likely that in init
 
 Proxies are used to transparently provide a mapping from URLs to BitTorrent without modifying HTTP client software. Support for configuring HTTP proxies is well-supported and common due to ubiquitous use on corporate and government systems, as well as by anti-censorship and privacy advocates.
 
-Proxies route `.bt` and domains with `_btlink` records to a gateway. They may also expose [special paths](#proxy-btlink-schema) for configuration.
+Proxies route `.{tld}` and domains with `_btlink` records to a gateway. They may also expose [special paths](#proxy-btlink-schema) for configuration.
 
 Proxies can set a header to tell origin servers that their clients support btlink. This means that dynamic sites can provide generic btlink URLs without explicitly selecting a public gateway as a fallback.
 
