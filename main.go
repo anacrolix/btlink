@@ -20,6 +20,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/anacrolix/args"
 	"github.com/anacrolix/dht/v2/bep44"
@@ -205,7 +206,7 @@ func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort strin
 func requestLogString(r *http.Request) []byte {
 	var buf bytes.Buffer
 	r.Write(newIndentWriter(&buf, "  "))
-	return bytes.TrimSpace(buf.Bytes())
+	return bytes.TrimRightFunc(buf.Bytes(), unicode.IsSpace)
 }
 
 type confluenceHandler struct {
@@ -280,6 +281,7 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	if ss[0] != "bt" {
 		return false
 	}
+	log.Printf("handling .bt request for %q", requestUrl(r))
 	ss = ss[1:]
 	if len(ss) == 0 {
 		http.Error(w, "not implemented yet", http.StatusNotImplemented)
@@ -371,6 +373,9 @@ func (h *handler) getMutableInfohashFromDht(target bep44.Target) (_ krpc.Bep46Pa
 func proxy(scc args.SubCmdCtx) error {
 	var confluenceHost, confluenceScheme string
 	var httpPortInt, httpsPortInt uint16 = 42080, 44369
+	logRequestHeaders := args.Flag(args.FlagOpt{
+		Long: "log request headers",
+	})
 	scc.Parse(
 		args.Opt(args.OptOpt{
 			Long:     "confluence-host",
@@ -392,6 +397,7 @@ func proxy(scc args.SubCmdCtx) error {
 			Long:   "https-port",
 			Target: &httpsPortInt,
 		}),
+		logRequestHeaders,
 	)
 	confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
 	if err != nil {
@@ -448,18 +454,22 @@ func proxy(scc args.SubCmdCtx) error {
 	}
 	proxyHandler := func(logPrefix string) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("%v: received request\n%s", logPrefix, requestLogString(r))
+			if logRequestHeaders.Bool() {
+				log.Printf("%v: received request\n%s", logPrefix, requestLogString(r))
+			}
 			err := func() error {
 				// Connect can be passed to a HTTPS proxy endpoint. We want to handle this
 				// ourselves, so we loop it back too. This also works if we receive CONNECT over HTTPS.
 				if r.Method == http.MethodConnect {
 					// We serve TLS by looping back to the HTTPS handler on this host.
+					log.Printf("handling proxy request for %q", requestUrl(r))
 					handleConnect(w, "localhost"+httpsAddr, r)
 					return nil
 				}
 				if handler.serveBtLink(w, r) {
 					return nil
 				}
+				log.Printf("handling proxy request for %q", requestUrl(r))
 				proxyMux.ServeHTTP(w, r)
 				return nil
 			}()
@@ -511,4 +521,14 @@ func proxy(scc args.SubCmdCtx) error {
 		serverErrs <- err
 	}()
 	return fmt.Errorf("server error: %w", <-serverErrs)
+}
+
+func requestUrl(r *http.Request) string {
+	u := *r.URL
+	u.Host = r.Host
+	u.Scheme = "http"
+	if r.TLS != nil {
+		u.Scheme = "https"
+	}
+	return u.String()
 }
