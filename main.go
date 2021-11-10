@@ -374,7 +374,7 @@ func proxy(scc args.SubCmdCtx) error {
 	var confluenceHost, confluenceScheme string
 	var httpPortInt, httpsPortInt uint16 = 42080, 44369
 	logRequestHeaders := args.Flag(args.FlagOpt{
-		Long: "log request headers",
+		Long: "log-request-headers",
 	})
 	scc.Parse(
 		args.Opt(args.OptOpt{
