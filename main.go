@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -18,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 	"unicode"
 
@@ -27,6 +27,7 @@ import (
 	"github.com/anacrolix/dht/v2/krpc"
 	"github.com/anacrolix/envpprof"
 	"github.com/anacrolix/torrent/bencode"
+	"github.com/anacrolix/torrent/metainfo"
 	"github.com/dgraph-io/ristretto"
 	"github.com/multiformats/go-base36"
 	"golang.org/x/crypto/acme/autocert"
@@ -227,21 +228,26 @@ func (ch *confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih str
 	}).ServeHTTP(w, r)
 }
 
-func (ch *confluenceHandler) dhtGet(ctx context.Context, target string) (b []byte, err error) {
+func (ch *confluenceHandler) do(ctx context.Context, path string, q url.Values) (resp *http.Response, err error) {
 	hc := http.Client{
 		Transport: &ch.confluenceTransport,
 	}
 	u := url.URL{
 		Scheme:   ch.confluenceScheme,
 		Host:     ch.confluenceHost,
-		Path:     "/bep44",
-		RawQuery: url.Values{"target": {target}}.Encode(),
+		Path:     path,
+		RawQuery: q.Encode(),
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		panic(err)
 	}
-	resp, err := hc.Do(req)
+	resp, err = hc.Do(req)
+	return
+}
+
+func (ch *confluenceHandler) dhtGet(ctx context.Context, target string) (b []byte, err error) {
+	resp, err := ch.do(ctx, "/bep44", url.Values{"target": {target}})
 	if err != nil {
 		return
 	}
@@ -261,6 +267,7 @@ type dhtItemCacheValue struct {
 }
 
 type handler struct {
+	dirPageTemplate      *template.Template
 	confluence           confluenceHandler
 	dhtItemCache         *ristretto.Cache
 	dhtItemCacheGetDedup singleflight.Group
@@ -291,7 +298,7 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	case "ih":
 		ss = ss[1:]
 		reverse(ss)
-		h.confluence.data(w, r, strings.Join(ss, "."), r.URL.Path[1:])
+		h.serveTorrentPath(w, r, strings.Join(ss, "."))
 		return true
 	case "pk":
 		ss = ss[1:]
@@ -315,10 +322,83 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		log.Printf("resolved %q to %x", r.Host, bep46.Ih)
-		h.confluence.data(w, r, hex.EncodeToString(bep46.Ih[:]), r.URL.Path[1:])
+		h.serveTorrentPath(w, r, hex.EncodeToString(bep46.Ih[:]))
 		return true
 	}
 	panic("unimplemented")
+}
+
+func (h *handler) getTorrentInfo(w http.ResponseWriter, r *http.Request, ihHex string) (info metainfo.Info, ok bool) {
+	resp, err := h.confluence.do(r.Context(), "/info", url.Values{"ih": {ihHex}})
+	if err != nil {
+		log.Printf("error getting info from confluence [ih: %q]: %v", ihHex, err)
+		http.Error(w, "error getting torrent info", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	err = bencode.NewDecoder(resp.Body).Decode(&info)
+	if err != nil {
+		log.Printf("error decoding info: %v", err)
+		http.Error(w, "error decoding torrent info", http.StatusBadGateway)
+		return
+	}
+	ok = true
+	return
+}
+
+type dirPageItem struct {
+	Href string
+	Name string
+}
+
+func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
+	info, ok := h.getTorrentInfo(w, r, ihHex)
+	if !ok {
+		return
+	}
+	var subFiles []dirPageItem
+	baseDisplayPath := r.URL.Path[1:]
+	uniqFiles := make(map[dirPageItem]bool)
+	for _, f := range info.UpvertedFiles() {
+		dp := f.DisplayPath(&info)
+		if strings.HasPrefix(dp, baseDisplayPath) {
+			relPath := dp[len(baseDisplayPath):]
+			nextSep := strings.Index(relPath, "/")
+			if nextSep != -1 {
+				relPath = relPath[:nextSep+1]
+			}
+			item := dirPageItem{
+				Href: relPath,
+				Name: relPath,
+			}
+			if !uniqFiles[item] {
+				subFiles = append(subFiles, dirPageItem{
+					Href: relPath,
+					Name: relPath,
+				})
+			}
+			uniqFiles[item] = true
+		}
+	}
+	if len(subFiles) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if baseDisplayPath != "" {
+		subFiles = append([]dirPageItem{
+			{"../", "../"},
+		}, subFiles...)
+	}
+	w.Header().Set("Content-Type", "text/html")
+	h.dirPageTemplate.Execute(w, subFiles)
+}
+
+func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {
+	if strings.HasSuffix(r.URL.Path, "/") {
+		h.serveTorrentDir(w, r, ihHex)
+		return
+	}
+	h.confluence.data(w, r, ihHex, r.URL.Path[1:])
 }
 
 func (h *handler) getMutableInfohash(target bep44.Target) (_ krpc.Bep46Payload, err error) {
@@ -431,6 +511,13 @@ func proxy(scc args.SubCmdCtx) error {
 			},
 		},
 		dhtItemCache: dhtItemCache,
+		dirPageTemplate: template.Must(template.New("dir").Parse(`
+<pre>
+{{ range . -}}
+<a href="{{.Href}}">{{.Name}}</a>
+{{ end }}
+</pre>`,
+		)),
 	}
 	httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 	httpAddr := ":" + httpPort
