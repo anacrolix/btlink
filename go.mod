@@ -3,7 +3,7 @@ module github.com/anacrolix/btlink
 go 1.17
 
 require (
-	github.com/anacrolix/args v0.4.1-0.20211104085705-59f0fe94eb8f
+	github.com/anacrolix/args v0.4.1-0.20211110010911-d8c9d5f7c0ad
 	github.com/anacrolix/dht/v2 v2.11.1-0.20211104092016-7295f2558a39
 	github.com/anacrolix/envpprof v1.1.1
 	github.com/anacrolix/torrent v1.35.1-0.20211104223025-f86af21cd2fe
