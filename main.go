@@ -408,8 +408,17 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 			{"../", "../"},
 		}, subFiles...)
 	}
+	dirPath := r.URL.Path
 	w.Header().Set("Content-Type", "text/html")
-	h.dirPageTemplate.Execute(w, subFiles)
+	h.dirPageTemplate.Execute(w, dirPageData{
+		Path:     dirPath,
+		Children: subFiles,
+	})
+}
+
+type dirPageData struct {
+	Path     string
+	Children []dirPageItem
 }
 
 func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {
@@ -540,7 +549,8 @@ func proxy(scc args.SubCmdCtx) error {
 		dhtItemCache: dhtItemCache,
 		dirPageTemplate: template.Must(template.New("dir").Parse(`
 <pre>
-{{ range . -}}
+{{ .Path }}$ ls
+{{ range .Children -}}
 <a href="{{.Href}}">{{.Name}}</a>
 {{ end }}
 </pre>`,
