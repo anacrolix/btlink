@@ -71,6 +71,7 @@ func (me *indentWriter) Write(p []byte) (n int, err error) {
 }
 
 func main() {
+	log.SetFlags(log.Flags() | log.Lshortfile)
 	defer envpprof.Stop()
 	err := mainErr()
 	if err != nil {
