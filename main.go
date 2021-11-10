@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"html/template"
@@ -272,6 +273,7 @@ type handler struct {
 	dhtItemCache         *ristretto.Cache
 	dhtItemCacheGetDedup singleflight.Group
 	dhtGetDedup          singleflight.Group
+	infoCache            *ristretto.Cache
 }
 
 func reverse(ss []string) {
@@ -329,6 +331,11 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (h *handler) getTorrentInfo(w http.ResponseWriter, r *http.Request, ihHex string) (info metainfo.Info, ok bool) {
+	cacheVal, ok := h.infoCache.Get(ihHex)
+	if ok {
+		info = cacheVal.(metainfo.Info)
+		return
+	}
 	resp, err := h.confluence.do(r.Context(), "/info", url.Values{"ih": {ihHex}})
 	if err != nil {
 		log.Printf("error getting info from confluence [ih: %q]: %v", ihHex, err)
@@ -343,7 +350,19 @@ func (h *handler) getTorrentInfo(w http.ResponseWriter, r *http.Request, ihHex s
 		return
 	}
 	ok = true
+	cost := estimateRecursiveMemoryUse(info)
+	log.Printf("store info for %v in cache with estimated cost %v", ihHex, cost)
+	h.infoCache.Set(ihHex, info, int64(cost))
 	return
+}
+
+func estimateRecursiveMemoryUse(val interface{}) int {
+	var buf bytes.Buffer
+	err := gob.NewEncoder(&buf).Encode(val)
+	if err != nil {
+		panic(err)
+	}
+	return buf.Len()
 }
 
 type dirPageItem struct {
@@ -493,11 +512,19 @@ func proxy(scc args.SubCmdCtx) error {
 		IgnoreInternalCost: true,
 		OnExit: func(val interface{}) {
 			v := val.(*dhtItemCacheValue)
-			log.Printf("value removed from dht item cache [item=%+v]", *v)
+			log.Printf("value removed from dht item cache [item=%v]", v)
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("new ristretto cache: %w", err)
+		return fmt.Errorf("new dht item cache: %w", err)
+	}
+	infoCache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 10000,
+		MaxCost:     50e6,
+		BufferItems: 64,
+	})
+	if err != nil {
+		return fmt.Errorf("new info cache: %w", err)
 	}
 	handler := handler{
 		confluence: confluenceHandler{
@@ -518,6 +545,7 @@ func proxy(scc args.SubCmdCtx) error {
 {{ end }}
 </pre>`,
 		)),
+		infoCache: infoCache,
 	}
 	httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 	httpAddr := ":" + httpPort
