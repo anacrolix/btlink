@@ -247,8 +247,8 @@ func (ch *confluenceHandler) do(ctx context.Context, path string, q url.Values) 
 	return
 }
 
-func (ch *confluenceHandler) dhtGet(ctx context.Context, target string) (b []byte, err error) {
-	resp, err := ch.do(ctx, "/bep44", url.Values{"target": {target}})
+func (ch *confluenceHandler) dhtGet(ctx context.Context, target, salt string) (b []byte, err error) {
+	resp, err := ch.do(ctx, "/bep44", url.Values{"target": {target}, "salt": {salt}})
 	if err != nil {
 		return
 	}
@@ -317,7 +317,7 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 		}
 		target := bep44.MakeMutableTarget(*(*[32]byte)(pk), salt)
 		log.Printf("looking up infohash for %q at %x", r.Host, target)
-		bep46, err := h.getMutableInfohash(target)
+		bep46, err := h.getMutableInfohash(target, string(salt))
 		if err != nil {
 			log.Printf("error resolving %q: %v", r.Host, err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -420,7 +420,7 @@ func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex
 	h.confluence.data(w, r, ihHex, r.URL.Path[1:])
 }
 
-func (h *handler) getMutableInfohash(target bep44.Target) (_ krpc.Bep46Payload, err error) {
+func (h *handler) getMutableInfohash(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
 	ret, err, _ := h.dhtItemCacheGetDedup.Do(string(target[:]), func() (interface{}, error) {
 		v, ok := h.dhtItemCache.Get(target[:])
 		if ok {
@@ -429,12 +429,12 @@ func (h *handler) getMutableInfohash(target bep44.Target) (_ krpc.Bep46Payload, 
 			if !v.updating && stale {
 				log.Printf("initiating async refresh of cached dht item [target=%x]", target)
 				v.updating = true
-				go h.getMutableInfohashFromDht(target)
+				go h.getMutableInfohashFromDht(target, salt)
 			}
 			log.Printf("served dht item from cache [target=%x, stale=%v]", target, stale)
 			return v.payload, nil
 		}
-		return h.getMutableInfohashFromDht(target)
+		return h.getMutableInfohashFromDht(target, salt)
 	})
 	if err != nil {
 		return
@@ -442,9 +442,9 @@ func (h *handler) getMutableInfohash(target bep44.Target) (_ krpc.Bep46Payload, 
 	return ret.(krpc.Bep46Payload), err
 }
 
-func (h *handler) getMutableInfohashFromDht(target bep44.Target) (_ krpc.Bep46Payload, err error) {
+func (h *handler) getMutableInfohashFromDht(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
 	ret, err, _ := h.dhtGetDedup.Do(string(target[:]), func() (_ interface{}, err error) {
-		b, err := h.confluence.dhtGet(context.Background(), hex.EncodeToString(target[:]))
+		b, err := h.confluence.dhtGet(context.Background(), hex.EncodeToString(target[:]), salt)
 		if err != nil {
 			err = fmt.Errorf("getting from dht via confluence: %w", err)
 			return
