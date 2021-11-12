@@ -18,6 +18,7 @@ import (
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/dgraph-io/ristretto"
+	"github.com/dustin/go-humanize"
 	"github.com/multiformats/go-base36"
 	"golang.org/x/sync/singleflight"
 )
@@ -129,6 +130,7 @@ func estimateRecursiveMemoryUse(val interface{}) int {
 type dirPageItem struct {
 	Href string
 	Name string
+	Size string
 }
 
 func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
@@ -150,12 +152,10 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 			item := dirPageItem{
 				Href: relPath,
 				Name: relPath,
+				Size: humanize.Bytes(uint64(f.Length)),
 			}
 			if !uniqFiles[item] {
-				subFiles = append(subFiles, dirPageItem{
-					Href: relPath,
-					Name: relPath,
-				})
+				subFiles = append(subFiles, item)
 			}
 			uniqFiles[item] = true
 		}
@@ -166,7 +166,7 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 	}
 	if baseDisplayPath != "" {
 		subFiles = append([]dirPageItem{
-			{"../", "../"},
+			{"../", "../", ""},
 		}, subFiles...)
 	}
 	dirPath := r.URL.Path

@@ -137,12 +137,18 @@ func proxy(scc args.SubCmdCtx) error {
 		},
 		dhtItemCache: dhtItemCache,
 		dirPageTemplate: template.Must(template.New("dir").Parse(`
-<pre>
-{{ .Path }}$ ls
-{{ range .Children -}}
-<a href="{{.Href}}">{{.Name}}</a>
-{{ end }}
-</pre>`,
+<body style="font-family:monospace">
+	<p>$ ls</p>
+	<table>
+		<tr><th>File</th><th>Size</th></tr>
+		{{ range .Children -}}
+		<tr>
+			<td><a href="{{.Href}}">{{.Name}}</a></td>
+			<td>{{.Size}}</td>
+		</tr>
+		{{- end }}
+	</table>
+</body>`,
 		)),
 		infoCache: infoCache,
 	}
