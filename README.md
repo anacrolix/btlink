@@ -14,7 +14,7 @@ btlink is the working name, due to the combination of BitTorrent, HTTP URL "link
 
 #### Top-level domain
 
-The top-level domain to trigger proxy intervention, and for general identification of btlink domain addressing (referred to as `tld`) was `.bt`. However that may be incompatible with the [ccTLD of Bhutan](https://en.wikipedia.org/wiki/.bt) (See issue #2).
+The top-level domain to trigger proxy intervention, and for general identification of btlink domain addressing (referred to as `tld`) was `.bt`. However that may be incompatible with the [ccTLD of Bhutan](https://en.wikipedia.org/wiki/.bt) (See issue [#2](https://github.com/anacrolix/btlink/issues/2)).
 
 Where possible, separate domains are used to reference different torrents to provide [origin isolation].
 
