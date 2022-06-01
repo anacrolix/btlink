@@ -8,6 +8,7 @@ require (
 	github.com/anacrolix/envpprof v1.1.1
 	github.com/anacrolix/torrent v1.35.1-0.20211104223025-f86af21cd2fe
 	github.com/dgraph-io/ristretto v0.1.0
+	github.com/dustin/go-humanize v1.0.0
 	github.com/multiformats/go-base36 v0.1.0
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
@@ -19,7 +20,6 @@ require (
 	github.com/anacrolix/missinggo/v2 v2.5.2 // indirect
 	github.com/bradfitz/iter v0.0.0-20191230175014-e8f45d346db8 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
