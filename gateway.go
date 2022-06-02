@@ -139,12 +139,20 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 		return
 	}
 	var subFiles []dirPageItem
+	autoIndex := !r.URL.Query().Has("btlink-no-autoindex")
 	baseDisplayPath := r.URL.Path[1:]
 	uniqFiles := make(map[dirPageItem]bool)
 	for _, f := range info.UpvertedFiles() {
 		dp := f.DisplayPath(&info)
 		if strings.HasPrefix(dp, baseDisplayPath) {
 			relPath := dp[len(baseDisplayPath):]
+			if autoIndex {
+				// Serve this file as the directory.
+				if relPath == "index.html" {
+					h.confluence.data(w, r, ihHex, dp)
+					return
+				}
+			}
 			nextSep := strings.Index(relPath, "/")
 			if nextSep != -1 {
 				relPath = relPath[:nextSep+1]
