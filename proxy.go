@@ -78,6 +78,7 @@ var proxyPacTmpl string
 type pacData struct {
 	HttpProxy  string
 	HttpsProxy string
+	RootDomain string
 }
 
 func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string, httpsProxyPort string) error {
@@ -93,6 +94,7 @@ func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort strin
 	err = t.Execute(w, pacData{
 		HttpProxy:  net.JoinHostPort(host, httpProxyPort),
 		HttpsProxy: net.JoinHostPort(host, httpsProxyPort),
+		RootDomain: "." + rootDomain,
 	})
 	if err != nil {
 		err = fmt.Errorf("executing template: %w", err)

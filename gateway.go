@@ -49,7 +49,7 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
 	ss := strings.Split(r.Host, ".")
 	reverse(ss)
-	if ss[0] != "bt" {
+	if ss[0] != rootDomain {
 		return false
 	}
 	log.Printf("handling .bt request for %q", requestUrl(r))
