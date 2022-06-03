@@ -23,7 +23,9 @@ require (
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	golang.org/x/net v0.0.0-20211105192438-b53810dc28af // indirect
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
 	golang.org/x/sys v0.0.0-20211107104306-e0b2ad06fe42 // indirect
 	golang.org/x/text v0.3.7 // indirect
 )
+
+replace golang.org/x/crypto => github.com/anacrolix/golang-crypto v0.0.0-20220603051934-c408a93b3ef5

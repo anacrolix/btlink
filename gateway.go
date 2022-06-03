@@ -49,10 +49,16 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
 	ss := strings.Split(r.Host, ".")
 	reverse(ss)
-	if ss[0] != rootDomain {
+	// Strip potential gateway labels
+	for len(ss) != 0 && ss[0] != rootDomain {
+		ss = ss[1:]
+	}
+	// The root domain was not seen
+	if len(ss) == 0 {
 		return false
 	}
-	log.Printf("handling .bt request for %q", requestUrl(r))
+	log.Printf("handling btlink request for %q", requestUrl(r))
+	// Strip the root domain
 	ss = ss[1:]
 	if len(ss) == 0 {
 		http.Error(w, "not implemented yet", http.StatusNotImplemented)

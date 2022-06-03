@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/anacrolix/args"
@@ -70,6 +73,7 @@ func mainErr() error {
 func proxy(scc args.SubCmdCtx) error {
 	var confluenceHost, confluenceScheme string
 	var httpPortInt, httpsPortInt uint16 = 42080, 44369
+	var gatewayDomains []string
 	logRequestHeaders := args.Flag(args.FlagOpt{
 		Long: "log-request-headers",
 	})
@@ -95,6 +99,12 @@ func proxy(scc args.SubCmdCtx) error {
 			Target: &httpsPortInt,
 		}),
 		logRequestHeaders,
+		args.Opt(args.OptOpt{
+			Long:     "gateway-domain",
+			Target:   &gatewayDomains,
+			Short:    'g',
+			Required: false,
+		}),
 	)
 	confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
 	if err != nil {
@@ -167,10 +177,24 @@ func proxy(scc args.SubCmdCtx) error {
 		http.ServeFile(w, r, "ca.pem")
 	})
 	autocertManager := autocert.Manager{
-		Prompt:     autocert.AcceptTOS,
-		Cache:      autocert.DirCache("autocert-cache"),
-		HostPolicy: autocert.HostWhitelist("btlink.anacrolix.link"),
-		Email:      "anacrolix+btlink@gmail.com",
+		Prompt: autocert.AcceptTOS,
+		Cache:  autocert.DirCache("autocert-cache"),
+		HostPolicy: func(ctx context.Context, host string) error {
+			// Note that this doesn't match a specific proxy domain (which we can't just use
+			// Cloudflare for due to CONNECT). If the proxy domain isn't the same as one of the
+			// gateway domains, more configuration is required here. There's also no checking that
+			// the requested domain name is valid, which would reduce unnecessary certificate
+			// issuance. Lastly, if there is rate-limiting applied, it might be worth looking into
+			// ACME DNS challenges to obtain wildcard certificates.
+			for _, gd := range gatewayDomains {
+				if host == gd || strings.HasSuffix(host, "."+gd) {
+					return nil
+				}
+			}
+			return errors.New("no gateway domains matched")
+		},
+		Email:    "anacrolix+btlink@gmail.com",
+		ShortSAN: "btlink.anacrolix.link",
 	}
 	proxyHandler := func(logPrefix string) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
