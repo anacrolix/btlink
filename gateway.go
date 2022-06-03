@@ -20,7 +20,10 @@ import (
 	"github.com/dgraph-io/ristretto"
 	"github.com/dustin/go-humanize"
 	"github.com/multiformats/go-base36"
+	"golang.org/x/exp/slices"
 	"golang.org/x/sync/singleflight"
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
 type dhtItemCacheValue struct {
@@ -139,6 +142,8 @@ type dirPageItem struct {
 	Size string
 }
 
+var torrentFilesCollator = collate.New(language.AmericanEnglish, collate.Numeric, collate.IgnoreCase)
+
 func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
 	info, ok := h.getTorrentInfo(w, r, ihHex)
 	if !ok {
@@ -147,47 +152,67 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 	var subFiles []dirPageItem
 	autoIndex := !r.URL.Query().Has("btlink-no-autoindex")
 	baseDisplayPath := r.URL.Path[1:]
-	uniqFiles := make(map[dirPageItem]bool)
-	for _, f := range info.UpvertedFiles() {
+	upvertedFiles := info.UpvertedFiles()
+	subDirs := make(map[string]int64, len(upvertedFiles))
+	for _, f := range upvertedFiles {
 		dp := f.DisplayPath(&info)
-		if strings.HasPrefix(dp, baseDisplayPath) {
-			relPath := dp[len(baseDisplayPath):]
-			if autoIndex {
-				// Serve this file as the directory.
-				if relPath == "index.html" {
-					h.serveTorrentFile(w, r, ihHex, dp)
-					return
-				}
+		if !strings.HasPrefix(dp, baseDisplayPath) {
+			continue
+		}
+		relPath := dp[len(baseDisplayPath):]
+		if autoIndex {
+			// Serve this file as the directory.
+			if relPath == "index.html" {
+				h.serveTorrentFile(w, r, ihHex, dp)
+				return
 			}
-			nextSep := strings.Index(relPath, "/")
-			if nextSep != -1 {
-				relPath = relPath[:nextSep+1]
-			}
-			item := dirPageItem{
+		}
+		nextSep := strings.Index(relPath, "/")
+		if nextSep == -1 {
+			subFiles = append(subFiles, dirPageItem{
 				Href: relPath,
 				Name: relPath,
 				Size: humanize.Bytes(uint64(f.Length)),
-			}
-			if !uniqFiles[item] {
-				subFiles = append(subFiles, item)
-			}
-			uniqFiles[item] = true
+			})
+		} else {
+			relPath = relPath[:nextSep+1]
+			subDirs[relPath] += f.Length
 		}
 	}
-	if len(subFiles) == 0 {
+	if len(subDirs) == 0 && len(subFiles) == 0 {
 		http.NotFound(w, r)
 		return
 	}
+	children := make([]dirPageItem, 0, 1+len(subDirs)+len(subFiles))
 	if baseDisplayPath != "" {
-		subFiles = append([]dirPageItem{
-			{"../", "../", ""},
-		}, subFiles...)
+		children = append(children, dirPageItem{"../", "../", ""})
 	}
+	for relPath, size := range subDirs {
+		children = append(children, dirPageItem{
+			Href: relPath,
+			Name: relPath,
+			Size: humanize.Bytes(uint64(size)),
+		})
+	}
+	children = append(children, subFiles...)
+	// Dirs come from an unstable source (map), but their names are unique.
+	slices.SortStableFunc(children, func(l, r dirPageItem) bool {
+		lDir := strings.HasSuffix(l.Name, "/")
+		rDir := strings.HasSuffix(r.Name, "/")
+		if lDir != rDir {
+			return lDir
+		}
+		i := torrentFilesCollator.CompareString(l.Name, r.Name)
+		if i != 0 {
+			return i < 0
+		}
+		return false
+	})
 	dirPath := r.URL.Path
 	w.Header().Set("Content-Type", "text/html")
 	h.dirPageTemplate.Execute(w, dirPageData{
 		Path:     dirPath,
-		Children: subFiles,
+		Children: children,
 	})
 }
 

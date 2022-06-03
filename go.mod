@@ -1,6 +1,6 @@
 module github.com/anacrolix/btlink
 
-go 1.17
+go 1.18
 
 require (
 	github.com/anacrolix/args v0.4.1-0.20211110010911-d8c9d5f7c0ad
@@ -11,7 +11,9 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/multiformats/go-base36 v0.1.0
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+	golang.org/x/exp v0.0.0-20220602145555-4a0574d9293f
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/text v0.3.7
 )
 
 require (
@@ -25,7 +27,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
 	golang.org/x/sys v0.0.0-20211107104306-e0b2ad06fe42 // indirect
-	golang.org/x/text v0.3.7 // indirect
 )
 
 replace golang.org/x/crypto => github.com/anacrolix/golang-crypto v0.0.0-20220603051934-c408a93b3ef5
