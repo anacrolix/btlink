@@ -229,40 +229,42 @@ func proxy(scc args.SubCmdCtx) error {
 		log.Printf("http server returned: %v", err)
 		serverErrs <- err
 	}()
-	go func() {
-		var certs []tls.Certificate
-		cert, err := tls.LoadX509KeyPair("wildcard.bt.pem", "ca.key")
-		if err != nil {
-			log.Printf("error loading bt wildcard cert: %v", err)
-		} else {
-			certs = append(certs, cert)
-		}
-		cert, err = tls.LoadX509KeyPair("localhost.pem", "ca.key")
-		if err != nil {
-			log.Printf("error loading localhost cert: %v", err)
-		} else {
-			certs = append(certs, cert)
-		}
-		tlsConfig := &tls.Config{
-			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				for _, cert := range certs {
-					if info.SupportsCertificate(&cert) == nil {
-						return &cert, nil
+	if true {
+		go func() {
+			var certs []tls.Certificate
+			cert, err := tls.LoadX509KeyPair("wildcard.bt.pem", "ca.key")
+			if err != nil {
+				log.Printf("error loading bt wildcard cert: %v", err)
+			} else {
+				certs = append(certs, cert)
+			}
+			cert, err = tls.LoadX509KeyPair("localhost.pem", "ca.key")
+			if err != nil {
+				log.Printf("error loading localhost cert: %v", err)
+			} else {
+				certs = append(certs, cert)
+			}
+			tlsConfig := &tls.Config{
+				GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					for _, cert := range certs {
+						if info.SupportsCertificate(&cert) == nil {
+							return &cert, nil
+						}
 					}
-				}
-				return autocertManager.GetCertificate(info)
-			},
-		}
-		s := http.Server{
-			Addr:        httpsAddr,
-			Handler:     proxyHandler("tls http server"),
-			TLSConfig:   tlsConfig,
-			ReadTimeout: 5 * time.Second,
-		}
-		log.Printf("starting https server at %q", s.Addr)
-		err = s.ListenAndServeTLS("", "")
-		log.Printf("https server returned: %v", err)
-		serverErrs <- err
-	}()
+					return autocertManager.GetCertificate(info)
+				},
+			}
+			s := http.Server{
+				Addr:        httpsAddr,
+				Handler:     proxyHandler("tls http server"),
+				TLSConfig:   tlsConfig,
+				ReadTimeout: 5 * time.Second,
+			}
+			log.Printf("starting https server at %q", s.Addr)
+			err = s.ListenAndServeTLS("", "")
+			log.Printf("https server returned: %v", err)
+			serverErrs <- err
+		}()
+	}
 	return fmt.Errorf("server error: %w", <-serverErrs)
 }
