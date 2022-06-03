@@ -23,6 +23,20 @@ func (ch *confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih str
 			r.URL.Path = "/data"
 			r.URL.RawQuery = url.Values{"ih": {ih}, "path": {path}}.Encode()
 		},
+		ModifyResponse: func(r *http.Response) error {
+			// Looks like it's sufficient to set a good Content-Type.
+			if false {
+				// Confluence sets filename=, we also want to ensure inline. It might be sufficient for
+				// this project to just set inline and let the browser infer filename because we're
+				// routing torrent file paths using the URL path component.
+				r.Header.Set("Content-Disposition", "inline")
+			}
+			// Copied from anacrolix/webtorrent for streaming in Chrome:
+			if r.Header.Get("Content-Type") == "video/x-matroska" {
+				r.Header.Set("Content-Type", "video/webm")
+			}
+			return nil
+		},
 		Transport: &ch.confluenceTransport,
 	}).ServeHTTP(w, r)
 }

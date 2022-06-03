@@ -149,7 +149,7 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 			if autoIndex {
 				// Serve this file as the directory.
 				if relPath == "index.html" {
-					h.confluence.data(w, r, ihHex, dp)
+					h.serveTorrentFile(w, r, ihHex, dp)
 					return
 				}
 			}
@@ -195,7 +195,11 @@ func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex
 		h.serveTorrentDir(w, r, ihHex)
 		return
 	}
-	h.confluence.data(w, r, ihHex, r.URL.Path[1:])
+	h.serveTorrentFile(w, r, ihHex, r.URL.Path[1:])
+}
+
+func (h *handler) serveTorrentFile(w http.ResponseWriter, r *http.Request, ihHex, filePath string) {
+	h.confluence.data(w, r, ihHex, filePath)
 }
 
 func (h *handler) getMutableInfohash(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
