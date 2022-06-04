@@ -81,7 +81,12 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 			salt = []byte(ss[1])
 			fallthrough
 		case 1:
-			pk, _ = base36.DecodeString(ss[0])
+			var err error
+			pk, err = base36.DecodeString(ss[0])
+			if err != nil {
+				http.Error(w, fmt.Errorf("error decoding public key from base36: %w", err).Error(), http.StatusBadRequest)
+				return true
+			}
 		default:
 			http.Error(w, "bad host", http.StatusBadRequest)
 			return true
