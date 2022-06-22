@@ -106,6 +106,7 @@ func proxy() (cmd bargle.Command) {
 	opt = bargle.NewUnaryOption(bargle.AutoUnmarshaler(&gatewayDomains))
 	opt.AddLong("gateway-domain")
 	opt.AddShort('g')
+	opt.Description(`whitelist of domain roots to issue certificates for`)
 	cmd.Options = append(cmd.Options, opt.Make())
 	flagOpt := bargle.NewFlag(&logRequestHeaders)
 	flagOpt.AddLong("log-request-headers")
