@@ -95,6 +95,7 @@ func proxy() (cmd bargle.Command) {
 	opt = bargle.NewUnaryOption(bargle.AutoUnmarshaler(&confluenceScheme))
 	opt.AddLong("confluence-scheme")
 	opt.AddShort('s')
+	opt.SetRequired()
 	cmd.Options = append(cmd.Options, opt.Make())
 	opt = bargle.NewUnaryOption(bargle.AutoUnmarshaler(&httpPortInt))
 	opt.AddLong("http-port")
