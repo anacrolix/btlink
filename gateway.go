@@ -37,6 +37,7 @@ type dhtItemCacheValue struct {
 }
 
 type handler struct {
+	uploadedPageTemplate *template.Template
 	dirPageTemplate      *template.Template
 	confluence           confluenceHandler
 	dhtItemCache         *ristretto.Cache
@@ -54,6 +55,9 @@ func reverse(ss []string) {
 
 //go:embed gateway-root.html
 var gatewayRootData []byte
+
+//go:embed uploaded.html.tmpl
+var uploadedTmplData []byte
 
 func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
@@ -92,11 +96,29 @@ func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	spew.Fdump(w, info)
+	var debug bytes.Buffer
+	spew.Fdump(&debug, info)
 	ih := mi.HashInfoBytes()
 	mi.InfoBytes = nil
-	spew.Fdump(w, mi)
-	fmt.Fprintf(w, mi.Magnet(&ih, &info).String())
+	spew.Fdump(&debug, mi)
+	templateData := struct {
+		Magnet     template.URL
+		GatewayUrl *url.URL
+		Debug      string
+	}{
+		template.URL(mi.Magnet(&ih, &info).String()),
+		&url.URL{
+			Scheme: r.URL.Scheme,
+			Host:   ih.HexString() + ".ih." + r.Host,
+		},
+		debug.String(),
+	}
+	// Confluence immediately imports upload data.
+	if false {
+		// If the data isn't accessible, the gateway will get stuck trying to load the autoindex if the torrent has one.
+		templateData.GatewayUrl.RawQuery = "btlink-no-autoindex"
+	}
+	h.uploadedPageTemplate.Execute(w, templateData)
 }
 
 func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {

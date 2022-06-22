@@ -166,7 +166,8 @@ func proxy() (cmd bargle.Command) {
 	</table>
 </body>`,
 			)),
-			infoCache: infoCache,
+			infoCache:            infoCache,
+			uploadedPageTemplate: template.Must(template.New("").Parse(string(uploadedTmplData))),
 		}
 		httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 		httpAddr := ":" + httpPort
