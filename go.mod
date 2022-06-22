@@ -3,9 +3,10 @@ module github.com/anacrolix/btlink
 go 1.18
 
 require (
-	github.com/anacrolix/args v0.4.1-0.20211110010911-d8c9d5f7c0ad
+	github.com/anacrolix/bargle v0.0.0-20220622082028-6c0bfc8b614d
 	github.com/anacrolix/dht/v2 v2.11.1-0.20211104092016-7295f2558a39
 	github.com/anacrolix/envpprof v1.1.1
+	github.com/anacrolix/generics v0.0.0-20220618083756-f99e35403a60
 	github.com/anacrolix/torrent v1.35.1-0.20211104223025-f86af21cd2fe
 	github.com/dgraph-io/ristretto v0.1.0
 	github.com/dustin/go-humanize v1.0.0

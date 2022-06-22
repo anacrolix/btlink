@@ -10,62 +10,66 @@ import (
 	"os"
 	"time"
 
-	"github.com/anacrolix/args"
+	"github.com/anacrolix/bargle"
 )
 
 // https://github.com/golang/go/issues/33310#issuecomment-537251383
 var maxSerialNumber = new(big.Int).SetBytes([]byte{127, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255})
 
-func genCert(scc args.SubCmdCtx) (err error) {
+func genCert() bargle.Command {
 	var params struct {
 		CommonName string   `arg:"positional"`
 		DnsNames   []string `arg:"positional" arity:"*"`
 	}
-	scc.Parse(args.FromStruct(&params)...)
-	privKeyBytes, err := os.ReadFile("ca.key")
-	if err != nil {
-		return err
-	}
-	b, _ := pem.Decode(privKeyBytes)
-	privKey, err := x509.ParsePKCS1PrivateKey(b.Bytes)
-	if err != nil {
-		return fmt.Errorf("parsing private key: %w", err)
-	}
-	caCertBytes, err := os.ReadFile("ca.pem")
-	if err != nil {
-		return err
-	}
-	b, _ = pem.Decode(caCertBytes)
-	caCert, err := x509.ParseCertificate(b.Bytes)
-	if err != nil {
-		return fmt.Errorf("parsing ca cert: %w", err)
-	}
-	//caCert, err := tls.LoadX509KeyPair("ca.pem", "ca.key")
-	//if err != nil {
-	//	return err
-	//}
-	serialNumber, err := rand.Int(rand.Reader, maxSerialNumber)
-	if err != nil {
+	cmd := bargle.FromStruct(&params)
+	cmd.Desc = "sign a certificate"
+	cmd.DefaultAction = func() (err error) {
+		privKeyBytes, err := os.ReadFile("ca.key")
+		if err != nil {
+			return err
+		}
+		b, _ := pem.Decode(privKeyBytes)
+		privKey, err := x509.ParsePKCS1PrivateKey(b.Bytes)
+		if err != nil {
+			return fmt.Errorf("parsing private key: %w", err)
+		}
+		caCertBytes, err := os.ReadFile("ca.pem")
+		if err != nil {
+			return err
+		}
+		b, _ = pem.Decode(caCertBytes)
+		caCert, err := x509.ParseCertificate(b.Bytes)
+		if err != nil {
+			return fmt.Errorf("parsing ca cert: %w", err)
+		}
+		//caCert, err := tls.LoadX509KeyPair("ca.pem", "ca.key")
+		//if err != nil {
+		//	return err
+		//}
+		serialNumber, err := rand.Int(rand.Reader, maxSerialNumber)
+		if err != nil {
+			return
+		}
+		cert, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+			Subject: pkix.Name{
+				Organization:       []string{"btlink"},
+				OrganizationalUnit: []string{"root CA"},
+				CommonName:         params.CommonName,
+			},
+			SerialNumber: serialNumber,
+			DNSNames:     params.DnsNames,
+			// https://stackoverflow.com/a/65239775/149482
+			NotAfter:  time.Now().AddDate(1, 0, 0),
+			NotBefore: time.Now(),
+		}, caCert, &privKey.PublicKey, privKey)
+		if err != nil {
+			return err
+		}
+		err = pem.Encode(os.Stdout, &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert,
+		})
 		return
 	}
-	cert, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
-		Subject: pkix.Name{
-			Organization:       []string{"btlink"},
-			OrganizationalUnit: []string{"root CA"},
-			CommonName:         params.CommonName,
-		},
-		SerialNumber: serialNumber,
-		DNSNames:     params.DnsNames,
-		// https://stackoverflow.com/a/65239775/149482
-		NotAfter:  time.Now().AddDate(1, 0, 0),
-		NotBefore: time.Now(),
-	}, caCert, &privKey.PublicKey, privKey)
-	if err != nil {
-		return err
-	}
-	err = pem.Encode(os.Stdout, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert,
-	})
-	return
+	return cmd
 }
