@@ -3,13 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -48,6 +52,53 @@ func reverse(ss []string) {
 	}
 }
 
+//go:embed gateway-root.html
+var gatewayRootData []byte
+
+func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		w.Write(gatewayRootData)
+		return
+	}
+	if false {
+		err := r.ParseMultipartForm(420)
+		if err != nil {
+			err = fmt.Errorf("parsing multipart upload form: %w", err)
+			log.Print(err)
+			http.Error(w, "error parsing multipart form", http.StatusBadRequest)
+			return
+		}
+		spew.Fdump(w, r.MultipartForm)
+		return
+	}
+	confluenceRequest := h.confluence.newRequest(r.Context(), r.Method, &url.URL{Path: "/upload"}, r.Body)
+	for _, h := range []string{"Content-Type", "Content-Length"} {
+		confluenceRequest.Header[h] = r.Header[h]
+	}
+	confluenceResponse, err := h.confluence.do(confluenceRequest)
+	if err != nil {
+		panic(err)
+	}
+	defer confluenceResponse.Body.Close()
+	if confluenceResponse.StatusCode != http.StatusOK {
+		io.Copy(os.Stderr, confluenceResponse.Body)
+		panic(confluenceResponse.StatusCode)
+	}
+	mi, err := metainfo.Load(confluenceResponse.Body)
+	if err != nil {
+		panic(err)
+	}
+	info, err := mi.UnmarshalInfo()
+	if err != nil {
+		panic(err)
+	}
+	spew.Fdump(w, info)
+	ih := mi.HashInfoBytes()
+	mi.InfoBytes = nil
+	spew.Fdump(w, mi)
+	fmt.Fprintf(w, mi.Magnet(&ih, &info).String())
+}
+
 func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
 	ss := strings.Split(r.Host, ".")
@@ -64,7 +115,7 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	// Strip the root domain
 	ss = ss[1:]
 	if len(ss) == 0 {
-		http.Error(w, "not implemented yet", http.StatusNotImplemented)
+		h.serveRoot(w, r)
 		return true
 	}
 	switch ss[0] {
@@ -112,7 +163,7 @@ func (h *handler) getTorrentInfo(w http.ResponseWriter, r *http.Request, ihHex s
 		info = cacheVal.(metainfo.Info)
 		return
 	}
-	resp, err := h.confluence.do(r.Context(), "/info", url.Values{"ih": {ihHex}})
+	resp, err := h.confluence.get(r.Context(), "/info", url.Values{"ih": {ihHex}})
 	if err != nil {
 		log.Printf("error getting info from confluence [ih: %q]: %v", ihHex, err)
 		http.Error(w, "error getting torrent info", http.StatusBadGateway)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -41,26 +42,39 @@ func (ch *confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih str
 	}).ServeHTTP(w, r)
 }
 
-func (ch *confluenceHandler) do(ctx context.Context, path string, q url.Values) (resp *http.Response, err error) {
-	hc := http.Client{
-		Transport: &ch.confluenceTransport,
+func (ch *confluenceHandler) newRequest(ctx context.Context, method string, ref *url.URL, body io.Reader) *http.Request {
+	base := url.URL{
+		Scheme: ch.confluenceScheme,
+		Host:   ch.confluenceHost,
 	}
-	u := url.URL{
-		Scheme:   ch.confluenceScheme,
-		Host:     ch.confluenceHost,
-		Path:     path,
-		RawQuery: q.Encode(),
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	u := base.ResolveReference(ref)
+	log.Printf("%q", u.String())
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		panic(err)
+	}
+	return req
+}
+
+func (ch *confluenceHandler) do(req *http.Request) (resp *http.Response, err error) {
+	// TODO: Reuse
+	hc := http.Client{
+		Transport: &ch.confluenceTransport,
 	}
 	resp, err = hc.Do(req)
 	return
 }
 
+func (ch *confluenceHandler) get(ctx context.Context, path string, q url.Values) (resp *http.Response, err error) {
+	req := ch.newRequest(ctx, http.MethodGet, &url.URL{
+		Path:     path,
+		RawQuery: q.Encode(),
+	}, nil)
+	return ch.do(req)
+}
+
 func (ch *confluenceHandler) dhtGet(ctx context.Context, target, salt string) (b []byte, err error) {
-	resp, err := ch.do(ctx, "/bep44", url.Values{"target": {target}, "salt": {salt}})
+	resp, err := ch.get(ctx, "/bep44", url.Values{"target": {target}, "salt": {salt}})
 	if err != nil {
 		return
 	}
