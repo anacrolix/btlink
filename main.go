@@ -252,12 +252,19 @@ func proxy() (cmd bargle.Command) {
 					certs = append(certs, cert)
 				}
 				tlsConfig := &tls.Config{
-					GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					GetCertificate: func(info *tls.ClientHelloInfo) (_ *tls.Certificate, err error) {
 						for _, cert := range certs {
 							if info.SupportsCertificate(&cert) == nil {
 								return &cert, nil
 							}
 						}
+						started := time.Now()
+						defer func() {
+							elapsed := time.Since(started)
+							if elapsed > time.Second {
+								go log.Printf("getting certificate for %q took %v: %v", info.ServerName, elapsed, err)
+							}
+						}()
 						return autocertManager.GetCertificate(info)
 					},
 				}
