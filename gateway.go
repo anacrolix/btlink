@@ -43,7 +43,7 @@ type handler struct {
 	dhtItemCache         *ristretto.Cache
 	dhtItemCacheGetDedup singleflight.Group
 	dhtGetDedup          singleflight.Group
-	infoCache            *ristretto.Cache
+	metainfoCache        *ristretto.Cache
 }
 
 func reverse(ss []string) {
@@ -179,29 +179,29 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	panic("unimplemented")
 }
 
-func (h *handler) getTorrentInfo(w http.ResponseWriter, r *http.Request, ihHex string) (info metainfo.Info, ok bool) {
-	cacheVal, ok := h.infoCache.Get(ihHex)
+func (h *handler) getTorrentMetaInfo(w http.ResponseWriter, r *http.Request, ihHex string) (mi metainfo.MetaInfo, ok bool) {
+	cacheVal, ok := h.metainfoCache.Get(ihHex)
 	if ok {
-		info = cacheVal.(metainfo.Info)
+		mi = cacheVal.(metainfo.MetaInfo)
 		return
 	}
-	resp, err := h.confluence.get(r.Context(), "/info", url.Values{"ih": {ihHex}})
+	resp, err := h.confluence.get(r.Context(), "/metainfo", url.Values{"ih": {ihHex}})
 	if err != nil {
-		log.Printf("error getting info from confluence [ih: %q]: %v", ihHex, err)
-		http.Error(w, "error getting torrent info", http.StatusBadGateway)
+		log.Printf("error getting meta-info from confluence [ih: %q]: %v", ihHex, err)
+		http.Error(w, "error getting torrent meta-info", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
-	err = bencode.NewDecoder(resp.Body).Decode(&info)
+	err = bencode.NewDecoder(resp.Body).Decode(&mi)
 	if err != nil {
 		log.Printf("error decoding info: %v", err)
-		http.Error(w, "error decoding torrent info", http.StatusBadGateway)
+		http.Error(w, "error decoding torrent meta-info", http.StatusBadGateway)
 		return
 	}
 	ok = true
-	cost := estimateRecursiveMemoryUse(info)
+	cost := estimateRecursiveMemoryUse(mi)
 	log.Printf("store info for %v in cache with estimated cost %v", ihHex, cost)
-	h.infoCache.Set(ihHex, info, int64(cost))
+	h.metainfoCache.Set(ihHex, mi, int64(cost))
 	return
 }
 
@@ -223,9 +223,13 @@ type dirPageItem struct {
 var torrentFilesCollator = collate.New(language.AmericanEnglish, collate.Numeric, collate.IgnoreCase)
 
 func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
-	info, ok := h.getTorrentInfo(w, r, ihHex)
+	mi, ok := h.getTorrentMetaInfo(w, r, ihHex)
 	if !ok {
 		return
+	}
+	info, err := mi.UnmarshalInfo()
+	if err != nil {
+		panic(err)
 	}
 	var subFiles []dirPageItem
 	autoIndex := !r.URL.Query().Has("btlink-no-autoindex")
@@ -287,17 +291,19 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 		return false
 	})
 	dirPath := r.URL.Path
+	infoHash := metainfo.NewHashFromHex(ihHex)
 	w.Header().Set("Content-Type", "text/html")
 	h.dirPageTemplate.Execute(w, dirPageData{
-		Path:     dirPath,
-		Children: children,
+		Path:      dirPath,
+		Children:  children,
+		MagnetURI: template.URL(mi.Magnet(&infoHash, &info).String()),
 	})
 }
 
 type dirPageData struct {
 	Path      string
 	Children  []dirPageItem
-	MagnetURI string
+	MagnetURI template.URL
 }
 
 func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {

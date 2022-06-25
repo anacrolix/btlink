@@ -152,7 +152,7 @@ func proxy() (cmd bargle.Command) {
 			},
 			dhtItemCache:         dhtItemCache,
 			dirPageTemplate:      htmlTemplates.Lookup("dir.html"),
-			infoCache:            infoCache,
+			metainfoCache:        infoCache,
 			uploadedPageTemplate: htmlTemplates.Lookup("uploaded.html.tmpl"),
 		}
 		httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
