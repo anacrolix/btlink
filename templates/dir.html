@@ -1,0 +1,20 @@
+<html>
+<head>
+{{ template "google-analytics" }}
+</head>
+<body style="font-family:monospace">
+<p>$ ls</p>
+<table>
+  <tr><th>File</th><th>Size</th></tr>
+  {{ range .Children -}}
+  <tr>
+    <td><a href="{{.Href}}">{{.Name}}</a></td>
+    <td>{{.Size}}</td>
+  </tr>
+  {{- end }}
+</table>
+<p>This website as a:
+  <a href="{{.MagnetURI}}">Magnet URI</a>
+</p>
+</body>
+</html>

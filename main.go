@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -151,23 +150,10 @@ func proxy() (cmd bargle.Command) {
 					},
 				},
 			},
-			dhtItemCache: dhtItemCache,
-			dirPageTemplate: template.Must(template.New("dir").Parse(`
-<body style="font-family:monospace">
-	<p>$ ls</p>
-	<table>
-		<tr><th>File</th><th>Size</th></tr>
-		{{ range .Children -}}
-		<tr>
-			<td><a href="{{.Href}}">{{.Name}}</a></td>
-			<td>{{.Size}}</td>
-		</tr>
-		{{- end }}
-	</table>
-</body>`,
-			)),
+			dhtItemCache:         dhtItemCache,
+			dirPageTemplate:      htmlTemplates.Lookup("dir.html"),
 			infoCache:            infoCache,
-			uploadedPageTemplate: template.Must(template.New("").Parse(string(uploadedTmplData))),
+			uploadedPageTemplate: htmlTemplates.Lookup("uploaded.html.tmpl"),
 		}
 		httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 		httpAddr := ":" + httpPort

@@ -53,15 +53,12 @@ func reverse(ss []string) {
 	}
 }
 
-//go:embed gateway-root.html
-var gatewayRootData []byte
-
-//go:embed uploaded.html.tmpl
-var uploadedTmplData []byte
-
 func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		w.Write(gatewayRootData)
+		err := htmlTemplates.ExecuteTemplate(w, "gateway-root.html", nil)
+		if err != nil {
+			panic(err)
+		}
 		return
 	}
 	if false {
@@ -118,7 +115,10 @@ func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 		// If the data isn't accessible, the gateway will get stuck trying to load the autoindex if the torrent has one.
 		templateData.GatewayUrl.RawQuery = "btlink-no-autoindex"
 	}
-	h.uploadedPageTemplate.Execute(w, templateData)
+	err = h.uploadedPageTemplate.Execute(w, templateData)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
@@ -295,8 +295,9 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 }
 
 type dirPageData struct {
-	Path     string
-	Children []dirPageItem
+	Path      string
+	Children  []dirPageItem
+	MagnetURI string
 }
 
 func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {

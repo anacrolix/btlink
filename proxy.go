@@ -3,7 +3,6 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net"
@@ -72,8 +71,7 @@ func reverseProxy(w http.ResponseWriter, r *http.Request) {
 	}).ServeHTTP(w, r)
 }
 
-//go:embed pac.tmpl
-var proxyPacTmpl string
+var proxyPacTmpl = htmlTemplates.Lookup("templates/pac.tmpl")
 
 type pacData struct {
 	HttpProxy  string
@@ -82,7 +80,6 @@ type pacData struct {
 }
 
 func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort string, httpsProxyPort string) error {
-	t := template.Must(template.New("").Parse(proxyPacTmpl))
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		host = r.Host
@@ -91,7 +88,7 @@ func serveDynamicPac(w http.ResponseWriter, r *http.Request, httpProxyPort strin
 	// end users to be able to view what they're getting remotely.
 	w.Header().Set("Content-Disposition", "inline; filename=btlink.pac")
 	w.Header().Set("Content-Type", `application/x-ns-proxy-autoconfig`)
-	err = t.Execute(w, pacData{
+	err = proxyPacTmpl.Execute(w, pacData{
 		HttpProxy:  net.JoinHostPort(host, httpProxyPort),
 		HttpsProxy: net.JoinHostPort(host, httpsProxyPort),
 		RootDomain: "." + rootDomain,
