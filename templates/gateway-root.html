@@ -20,12 +20,12 @@
 <body>
 {{ with .JustUploaded }}
     <h3>Upload result</h3>
-
-    <a href="{{ .GatewayUrl }}">Upload on this gateway</a>
-    <br>
-    <a href="{{ .Magnet }}">Magnet link</a>
-    {{ if .Debug }}
-        <br>
+    <ul>
+        <li><code>{{ .Infohash }}</code></li>
+        <li><a href="{{ .GatewayUrl }}">View on this gateway</a></li>
+        <li><a href="{{ .Magnet }}">Magnet link</a></li>
+    </ul>
+    {{ if .Debug -}}
         <pre>{{ .Debug }}</pre>
     {{ end }}
 {{ end }}

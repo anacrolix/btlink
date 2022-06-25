@@ -59,6 +59,7 @@ type gatewayRootPageData struct {
 }
 
 type uploadedPageData struct {
+	Infohash   string
 	Magnet     template.URL
 	GatewayUrl *url.URL
 	Debug      string
@@ -116,6 +117,7 @@ func (h *handler) doUpload(w http.ResponseWriter, r *http.Request) *uploadedPage
 	magnet := mi.Magnet(&ih, &info)
 	addGatewayWebseedToMagnet(&magnet, infohashHost(ih.HexString(), r.Host), h.gatewayWebseedScheme(r), r.URL)
 	templateData := &uploadedPageData{
+		ih.HexString(),
 		template.URL(magnet.String()),
 		&url.URL{
 			Scheme: r.URL.Scheme,
