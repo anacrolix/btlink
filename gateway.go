@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
+	"github.com/anacrolix/generics"
 	"github.com/davecgh/go-spew/spew"
 	"html/template"
 	"io"
@@ -44,6 +45,7 @@ type handler struct {
 	dhtItemCacheGetDedup singleflight.Group
 	dhtGetDedup          singleflight.Group
 	metainfoCache        *ristretto.Cache
+	gatewayDomains       []string
 }
 
 func reverse(ss []string) {
@@ -106,7 +108,7 @@ func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 		template.URL(mi.Magnet(&ih, &info).String()),
 		&url.URL{
 			Scheme: r.URL.Scheme,
-			Host:   ih.HexString() + ".ih." + r.Host,
+			Host:   infohashHost(ih.HexString(), r.Host),
 		},
 		debug.String(),
 	}
@@ -121,8 +123,19 @@ func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func infohashHost(ihHex, gateway string) string {
+	return ihHex + "-ih." + gateway
+}
+
 func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
+	if newHost := redirectOldBtRoot(r.Host); newHost.Ok {
+		newUrl := r.URL.ResolveReference(&url.URL{
+			Host: newHost.Value,
+		})
+		http.Redirect(w, r, newUrl.String(), http.StatusTemporaryRedirect)
+		return true
+	}
 	ss := strings.Split(r.Host, ".")
 	reverse(ss)
 	// Strip potential gateway labels
@@ -140,22 +153,29 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 		h.serveRoot(w, r)
 		return true
 	}
-	switch ss[0] {
+	labelParts := strings.SplitN(ss[0], "-", 3)
+	reverse(labelParts)
+	switch labelParts[0] {
 	case "ih":
-		ss = ss[1:]
-		reverse(ss)
-		h.serveTorrentPath(w, r, strings.Join(ss, "."))
+		labelParts = labelParts[1:]
+		reverse(labelParts)
+		if len(labelParts) != 1 {
+			http.Error(w, "bad host", http.StatusBadRequest)
+			return true
+		}
+		h.serveTorrentPath(w, r, strings.Join(labelParts, "-"))
 		return true
 	case "pk":
-		ss = ss[1:]
+		labelParts = labelParts[1:]
+		reverse(labelParts)
 		var salt, pk []byte
-		switch len(ss) {
+		switch len(labelParts) {
 		case 2:
-			salt = []byte(ss[1])
+			salt = []byte(labelParts[1])
 			fallthrough
 		case 1:
 			var err error
-			pk, err = base36.DecodeString(ss[0])
+			pk, err = base36.DecodeString(labelParts[0])
 			if err != nil {
 				http.Error(w, fmt.Errorf("error decoding public key from base36: %w", err).Error(), http.StatusBadRequest)
 				return true
@@ -176,7 +196,44 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 		h.serveTorrentPath(w, r, hex.EncodeToString(bep46.Ih[:]))
 		return true
 	}
-	panic("unimplemented")
+	http.Error(w, "bad host", http.StatusBadRequest)
+	return true
+}
+
+func redirectOldBtRoot(host string) (newHost generics.Option[string]) {
+	ss := strings.Split(host, ".")
+	reverse(ss)
+	var gatewayParts []string
+	// Strip potential gateway labels
+	for len(ss) != 0 && ss[0] != oldRootDomain {
+		gatewayParts = append(gatewayParts, ss[0])
+		ss = ss[1:]
+	}
+	// The root domain was not seen
+	if len(ss) == 0 {
+		return
+	}
+	if len(gatewayParts) == 0 || gatewayParts[len(gatewayParts)-1] != rootDomain {
+		gatewayParts = append(gatewayParts, rootDomain)
+	}
+	reverse(gatewayParts)
+	gateway := strings.Join(gatewayParts, ".")
+	// Strip the root domain
+	ss = ss[1:]
+	if len(ss) == 0 {
+		return generics.Some(gateway)
+	}
+	switch ss[0] {
+	case "ih":
+		ss = ss[1:]
+		reverse(ss)
+		return generics.Some(infohashHost(strings.Join(ss, "."), gateway))
+	case "pk":
+		ss = ss[1:]
+		reverse(ss)
+		return generics.Some(strings.Join(ss, ".") + "-pk." + gateway)
+	}
+	return
 }
 
 func (h *handler) getTorrentMetaInfo(w http.ResponseWriter, r *http.Request, ihHex string) (mi metainfo.MetaInfo, ok bool) {

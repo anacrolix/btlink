@@ -1,5 +1,6 @@
 package main
 
 const (
-	rootDomain = "bt"
+	rootDomain    = "btlink"
+	oldRootDomain = "bt"
 )
