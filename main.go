@@ -150,10 +150,9 @@ func proxy() (cmd bargle.Command) {
 					},
 				},
 			},
-			dhtItemCache:         dhtItemCache,
-			dirPageTemplate:      htmlTemplates.Lookup("dir.html"),
-			metainfoCache:        infoCache,
-			uploadedPageTemplate: htmlTemplates.Lookup("uploaded.html.tmpl"),
+			dhtItemCache:    dhtItemCache,
+			dirPageTemplate: htmlTemplates.Lookup("dir.html"),
+			metainfoCache:   infoCache,
 		}
 		httpPort := strconv.FormatUint(uint64(httpPortInt), 10) // Make the default 42080
 		httpAddr := ":" + httpPort

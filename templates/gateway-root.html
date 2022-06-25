@@ -10,16 +10,39 @@
         gtag('config', 'G-ECHVE14X7L');
     </script>
 {{- end }}
+<p></p>
+
 <html>
 <head>
     <title>btlink root gateway domain</title>
     {{ template "google-analytics" }}
 </head>
+<body>
+{{ with .JustUploaded }}
+    <h3>Upload result</h3>
+
+    <a href="{{ .GatewayUrl }}">Upload on this gateway</a>
+    <br>
+    <a href="{{ .Magnet }}">Magnet link</a>
+    {{ if .Debug }}
+        <br>
+        <pre>{{ .Debug }}</pre>
+    {{ end }}
+{{ end }}
+<h3>Uploader</h3>
+<h4>Files</h4>
 <form method="post" enctype="multipart/form-data">
     <input type="file" multiple name="files">
+    <br>
+    <label for="name">
+        Torrent name
+    </label>
+    <input type="text" id="name" name="name" value="btlink upload">
+    <br>
     <!--
     <input type="file" multiple directory webkitdirectory name="files">
     -->
     <input type="submit" value="Create torrent">
 </form>
+</body>
 </html>

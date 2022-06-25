@@ -38,7 +38,6 @@ type dhtItemCacheValue struct {
 }
 
 type handler struct {
-	uploadedPageTemplate *template.Template
 	dirPageTemplate      *template.Template
 	confluence           confluenceHandler
 	dhtItemCache         *ristretto.Cache
@@ -55,24 +54,38 @@ func reverse(ss []string) {
 	}
 }
 
+type gatewayRootPageData struct {
+	JustUploaded *uploadedPageData
+}
+
+type uploadedPageData struct {
+	Magnet     template.URL
+	GatewayUrl *url.URL
+	Debug      string
+}
+
 func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		err := htmlTemplates.ExecuteTemplate(w, "gateway-root.html", nil)
-		if err != nil {
-			panic(err)
-		}
-		return
+	pageData := gatewayRootPageData{}
+	if r.Method != http.MethodGet {
+		pageData.JustUploaded = h.doUpload(w, r)
 	}
+	err := htmlTemplates.ExecuteTemplate(w, "gateway-root.html", pageData)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (h *handler) doUpload(w http.ResponseWriter, r *http.Request) *uploadedPageData {
 	if false {
 		err := r.ParseMultipartForm(420)
 		if err != nil {
 			err = fmt.Errorf("parsing multipart upload form: %w", err)
 			log.Print(err)
 			http.Error(w, "error parsing multipart form", http.StatusBadRequest)
-			return
+			return nil
 		}
 		spew.Fdump(w, r.MultipartForm)
-		return
+		return nil
 	}
 	confluenceRequest := h.confluence.newRequest(r.Context(), r.Method, &url.URL{Path: "/upload"}, r.Body)
 	for _, h := range []string{"Content-Type", "Content-Length"} {
@@ -91,36 +104,35 @@ func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
+	ih := mi.HashInfoBytes()
 	info, err := mi.UnmarshalInfo()
 	if err != nil {
 		panic(err)
 	}
 	var debug bytes.Buffer
-	spew.Fdump(&debug, info)
-	ih := mi.HashInfoBytes()
-	mi.InfoBytes = nil
-	spew.Fdump(&debug, mi)
-	templateData := struct {
-		Magnet     template.URL
-		GatewayUrl *url.URL
-		Debug      string
-	}{
-		template.URL(mi.Magnet(&ih, &info).String()),
+	if false {
+		spew.Fdump(&debug, info)
+	}
+	magnet := mi.Magnet(&ih, &info)
+	addGatewayWebseedToMagnet(&magnet, infohashHost(ih.HexString(), r.Host), h.gatewayWebseedScheme(r), r.URL)
+	templateData := &uploadedPageData{
+		template.URL(magnet.String()),
 		&url.URL{
 			Scheme: r.URL.Scheme,
 			Host:   infohashHost(ih.HexString(), r.Host),
 		},
 		debug.String(),
 	}
+	mi.InfoBytes = nil
+	if false {
+		spew.Fdump(&debug, mi)
+	}
 	// Confluence immediately imports upload data.
 	if false {
 		// If the data isn't accessible, the gateway will get stuck trying to load the autoindex if the torrent has one.
 		templateData.GatewayUrl.RawQuery = "btlink-no-autoindex"
 	}
-	err = h.uploadedPageTemplate.Execute(w, templateData)
-	if err != nil {
-		panic(err)
-	}
+	return templateData
 }
 
 func infohashHost(ihHex, gateway string) string {
@@ -279,6 +291,13 @@ type dirPageItem struct {
 
 var torrentFilesCollator = collate.New(language.AmericanEnglish, collate.Numeric, collate.IgnoreCase)
 
+func (h *handler) gatewayWebseedScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
 func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
 	mi, ok := h.getTorrentMetaInfo(w, r, ihHex)
 	if !ok {
@@ -350,11 +369,26 @@ func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex 
 	dirPath := r.URL.Path
 	infoHash := metainfo.NewHashFromHex(ihHex)
 	w.Header().Set("Content-Type", "text/html")
+	magnet := mi.Magnet(&infoHash, &info)
+	spew.Dump(*r.URL)
+	spew.Dump(h.gatewayWebseedScheme(r), magnet)
+	addGatewayWebseedToMagnet(&magnet, r.Host, h.gatewayWebseedScheme(r), r.URL)
 	h.dirPageTemplate.Execute(w, dirPageData{
 		Path:      dirPath,
 		Children:  children,
-		MagnetURI: template.URL(mi.Magnet(&infoHash, &info).String()),
+		MagnetURI: template.URL(magnet.String()),
 	})
+}
+
+func addGatewayWebseedToMagnet(m *metainfo.Magnet, gatewayHost, scheme string, baseUrl *url.URL) {
+	ref := url.URL{
+		Host: gatewayHost,
+		Path: "/",
+	}
+	if baseUrl.Scheme == "" {
+		ref.Scheme = scheme
+	}
+	m.Params.Add("ws", baseUrl.ResolveReference(&ref).String())
 }
 
 type dirPageData struct {
