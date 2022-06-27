@@ -181,7 +181,6 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	case "pk":
 		labelParts = labelParts[1:]
-		reverse(labelParts)
 		var salt, pk []byte
 		switch len(labelParts) {
 		case 2:
