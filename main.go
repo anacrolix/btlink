@@ -139,7 +139,7 @@ func proxy() (cmd bargle.Command) {
 		if err != nil {
 			return fmt.Errorf("new info cache: %w", err)
 		}
-		handler := handler{
+		handler := gatewayHandler{
 			confluence: confluenceHandler{
 				confluenceHost:   confluenceHost,
 				confluenceScheme: confluenceScheme,
@@ -202,7 +202,7 @@ func proxy() (cmd bargle.Command) {
 						handleConnect(w, "localhost"+httpsAddr, r)
 						return nil
 					}
-					if handler.serveBtLink(w, r) {
+					if handler.ServeHTTP(w, r) {
 						return nil
 					}
 					log.Printf("handling proxy request for %q", requestUrl(r))

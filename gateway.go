@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -37,7 +38,7 @@ type dhtItemCacheValue struct {
 	payload  krpc.Bep46Payload
 }
 
-type handler struct {
+type gatewayHandler struct {
 	dirPageTemplate      *template.Template
 	confluence           confluenceHandler
 	dhtItemCache         *ristretto.Cache
@@ -65,7 +66,7 @@ type uploadedPageData struct {
 	Debug      string
 }
 
-func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
+func (h *gatewayHandler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	pageData := gatewayRootPageData{}
 	if r.Method != http.MethodGet {
 		pageData.JustUploaded = h.doUpload(w, r)
@@ -76,7 +77,7 @@ func (h *handler) serveRoot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) doUpload(w http.ResponseWriter, r *http.Request) *uploadedPageData {
+func (h *gatewayHandler) doUpload(w http.ResponseWriter, r *http.Request) *uploadedPageData {
 	if false {
 		err := r.ParseMultipartForm(420)
 		if err != nil {
@@ -141,15 +142,45 @@ func infohashHost(ihHex, gateway string) string {
 	return ihHex + "-ih." + gateway
 }
 
-func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
+func (h *gatewayHandler) resolveDomainDnsLink(w http.ResponseWriter, r *http.Request) bool {
+	name := "_dnslink." + r.Host
+	txts, err := net.LookupTXT(name)
+	if err != nil {
+		err = fmt.Errorf("resolving txt for %v: %w", name, err)
+		log.Printf("error %s", err)
+		return false
+	}
+	if len(txts) == 0 {
+		return false
+	}
+	return h.serveBtLinkDomain(w, r, strings.Split(txts[0], "."))
+}
+
+func (h *gatewayHandler) serveOldBtLinkRedirection(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("considering %q for btlink handling", r.Host)
-	if newHost := redirectOldBtRoot(r.Host); newHost.Ok {
-		newUrl := r.URL.ResolveReference(&url.URL{
-			Host: newHost.Value,
-		})
-		http.Redirect(w, r, newUrl.String(), http.StatusTemporaryRedirect)
+	newHost := redirectOldBtRoot(r.Host)
+	if !newHost.Ok {
+		return false
+	}
+	newUrl := r.URL.ResolveReference(&url.URL{
+		Host: newHost.Value,
+	})
+	http.Redirect(w, r, newUrl.String(), http.StatusTemporaryRedirect)
+	return true
+}
+
+func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) bool {
+	if h.resolveDomainDnsLink(w, r) {
 		return true
 	}
+	if h.serveBtLink(w, r) {
+		return true
+	}
+	return h.serveOldBtLinkRedirection(w, r)
+}
+
+func (h *gatewayHandler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
+	log.Printf("considering %q for btlink handling", r.Host)
 	ss := strings.Split(r.Host, ".")
 	reverse(ss)
 	// Strip potential gateway labels
@@ -163,6 +194,10 @@ func (h *handler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
 	log.Printf("handling btlink request for %q", requestUrl(r))
 	// Strip the root domain
 	ss = ss[1:]
+	return h.serveBtLinkDomain(w, r, ss)
+}
+
+func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Request, ss []string) bool {
 	if len(ss) == 0 {
 		h.serveRoot(w, r)
 		return true
@@ -249,7 +284,7 @@ func redirectOldBtRoot(host string) (newHost generics.Option[string]) {
 	return
 }
 
-func (h *handler) getTorrentMetaInfo(w http.ResponseWriter, r *http.Request, ihHex string) (mi metainfo.MetaInfo, ok bool) {
+func (h *gatewayHandler) getTorrentMetaInfo(w http.ResponseWriter, r *http.Request, ihHex string) (mi metainfo.MetaInfo, ok bool) {
 	cacheVal, ok := h.metainfoCache.Get(ihHex)
 	if ok {
 		mi = cacheVal.(metainfo.MetaInfo)
@@ -292,14 +327,14 @@ type dirPageItem struct {
 
 var torrentFilesCollator = collate.New(language.AmericanEnglish, collate.Numeric, collate.IgnoreCase)
 
-func (h *handler) gatewayWebseedScheme(r *http.Request) string {
+func (h *gatewayHandler) gatewayWebseedScheme(r *http.Request) string {
 	if r.TLS != nil {
 		return "https"
 	}
 	return "http"
 }
 
-func (h *handler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
+func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
 	mi, ok := h.getTorrentMetaInfo(w, r, ihHex)
 	if !ok {
 		return
@@ -398,7 +433,7 @@ type dirPageData struct {
 	MagnetURI template.URL
 }
 
-func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {
+func (h *gatewayHandler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {
 	if strings.HasSuffix(r.URL.Path, "/") {
 		h.serveTorrentDir(w, r, ihHex)
 		return
@@ -406,11 +441,11 @@ func (h *handler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex
 	h.serveTorrentFile(w, r, ihHex, r.URL.Path[1:])
 }
 
-func (h *handler) serveTorrentFile(w http.ResponseWriter, r *http.Request, ihHex, filePath string) {
+func (h *gatewayHandler) serveTorrentFile(w http.ResponseWriter, r *http.Request, ihHex, filePath string) {
 	h.confluence.data(w, r, ihHex, filePath)
 }
 
-func (h *handler) getMutableInfohash(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
+func (h *gatewayHandler) getMutableInfohash(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
 	ret, err, _ := h.dhtItemCacheGetDedup.Do(string(target[:]), func() (interface{}, error) {
 		v, ok := h.dhtItemCache.Get(target[:])
 		if ok {
@@ -432,7 +467,7 @@ func (h *handler) getMutableInfohash(target bep44.Target, salt string) (_ krpc.B
 	return ret.(krpc.Bep46Payload), err
 }
 
-func (h *handler) getMutableInfohashFromDht(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
+func (h *gatewayHandler) getMutableInfohashFromDht(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
 	ret, err, _ := h.dhtGetDedup.Do(string(target[:]), func() (_ interface{}, err error) {
 		b, err := h.confluence.dhtGet(context.Background(), hex.EncodeToString(target[:]), salt)
 		if err != nil {
