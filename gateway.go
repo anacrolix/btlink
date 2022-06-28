@@ -203,6 +203,7 @@ func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Reques
 		return true
 	}
 	labelParts := strings.SplitN(ss[0], "-", 3)
+	ss = ss[1:]
 	reverse(labelParts)
 	switch labelParts[0] {
 	case "ih":
@@ -216,23 +217,24 @@ func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Reques
 		return true
 	case "pk":
 		labelParts = labelParts[1:]
-		var salt, pk []byte
-		switch len(labelParts) {
-		case 2:
-			salt = []byte(labelParts[1])
-			fallthrough
-		case 1:
-			var err error
-			pk, err = base36.DecodeString(labelParts[0])
-			if err != nil {
-				http.Error(w, fmt.Errorf("error decoding public key from base36: %w", err).Error(), http.StatusBadRequest)
-				return true
-			}
-		default:
+		if len(labelParts) == 0 {
 			http.Error(w, "bad host", http.StatusBadRequest)
 			return true
 		}
-		target := bep44.MakeMutableTarget(*(*[32]byte)(pk), salt)
+		pk, err := base36.DecodeString(labelParts[0])
+		if err != nil {
+			http.Error(w, fmt.Errorf("error decoding public key from base36: %w", err).Error(), http.StatusBadRequest)
+			return true
+		}
+		labelParts = labelParts[1:]
+		reverse(labelParts)
+		reverse(ss)
+		if len(labelParts) > 1 {
+			ss = append(ss, strings.Join(labelParts, "-"))
+		}
+		salt := strings.Join(ss, ".")
+		log.Printf("salt for %q: %q", r.Host, salt)
+		target := bep44.MakeMutableTarget(*(*[32]byte)(pk), []byte(salt))
 		log.Printf("looking up infohash for %q at %x", r.Host, target)
 		bep46, err := h.getMutableInfohash(target, string(salt))
 		if err != nil {
