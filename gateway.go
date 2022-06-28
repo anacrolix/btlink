@@ -33,6 +33,7 @@ import (
 )
 
 type dhtItemCacheValue struct {
+	target   bep44.Target
 	updated  time.Time
 	updating bool
 	payload  krpc.Bep46Payload
@@ -456,17 +457,39 @@ func (h *gatewayHandler) getMutableInfohash(target bep44.Target, salt string) (_
 			if !v.updating && stale {
 				log.Printf("initiating async refresh of cached dht item [target=%x]", target)
 				v.updating = true
-				go h.getMutableInfohashFromDht(target, salt)
+				go func() {
+					bep46, err := h.getMutableInfohashFromDht(target, salt)
+					v.updating = false
+					if err != nil {
+						log.Printf("error updating dht item cache [target=%x]: %v", target, err)
+						return
+					}
+					h.cacheDhtItem(target, bep46)
+				}()
 			}
 			log.Printf("served dht item from cache [target=%x, stale=%v]", target, stale)
 			return v.payload, nil
 		}
-		return h.getMutableInfohashFromDht(target, salt)
+		bep46, err := h.getMutableInfohashFromDht(target, salt)
+		if err == nil {
+			h.cacheDhtItem(target, bep46)
+		}
+		return bep46, err
 	})
 	if err != nil {
 		return
 	}
 	return ret.(krpc.Bep46Payload), err
+}
+
+func (h *gatewayHandler) cacheDhtItem(target bep44.Target, bep46 krpc.Bep46Payload) {
+	stored := h.dhtItemCache.Set(target[:], &dhtItemCacheValue{
+		updated:  time.Now(),
+		updating: false,
+		payload:  bep46,
+		target:   target,
+	}, 1)
+	log.Printf("caching dht item [target=%x, stored=%v]", target, stored)
 }
 
 func (h *gatewayHandler) getMutableInfohashFromDht(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {
@@ -482,12 +505,6 @@ func (h *gatewayHandler) getMutableInfohashFromDht(target bep44.Target, salt str
 			err = fmt.Errorf("unmarshalling bep46 payload from confluence response: %w", err)
 			return
 		}
-		stored := h.dhtItemCache.Set(target[:], &dhtItemCacheValue{
-			updated:  time.Now(),
-			updating: false,
-			payload:  bep46,
-		}, 1)
-		log.Printf("caching dht item [target=%x, stored=%v]", target, stored)
 		return bep46, err
 	})
 	if err != nil {

@@ -125,7 +125,7 @@ func proxy() (cmd bargle.Command) {
 			IgnoreInternalCost: true,
 			OnExit: func(val interface{}) {
 				v := val.(*dhtItemCacheValue)
-				log.Printf("value removed from dht item cache [item=%v]", v)
+				log.Printf("value removed from dht item cache [target=%v]", v.target)
 			},
 		})
 		if err != nil {
