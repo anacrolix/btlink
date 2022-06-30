@@ -173,8 +173,6 @@ func main() {
 			return
 		}()},
 	)
-	var help bargle.HelpCommand
-	help.AddToCommand(&main.Command)
 	main.Run()
 }
 
