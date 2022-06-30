@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/anacrolix/missinggo/v2/iter"
 	"log"
+	mathRand "math/rand"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anacrolix/bargle"
@@ -67,6 +72,66 @@ func main() {
 				}
 				fmt.Println(encoderChoice.Value()(b))
 				return nil
+			}
+			return
+		}()},
+		bargle.Subcommand{Name: "generate-keys", Command: func() (cmd bargle.Command) {
+			cmd.Desc = "search for progressively shorter valid public keys"
+			parallelism := runtime.NumCPU()
+			cmd.Options = append(cmd.Options, func() bargle.Param {
+				m := bargle.NewUnaryOption(bargle.AutoUnmarshaler(&parallelism))
+				m.AddLong("parallel")
+				return m.Make()
+			}())
+			cmd.DefaultAction = func() error {
+				var (
+					mu       sync.Mutex
+					tries    int64
+					shortest = ""
+				)
+				for range iter.N(parallelism) {
+					go func() {
+						getPair := func() func() ([]byte, []byte) {
+							if true {
+								seed := make([]byte, ed25519.SeedSize)
+								return func() ([]byte, []byte) {
+									mathRand.Read(seed)
+									privKey := ed25519.NewKeyFromSeed(seed)
+									pubKey := privKey[ed25519.SeedSize:]
+									return pubKey, seed
+								}
+							} else {
+								return func() ([]byte, []byte) {
+									pubKey, privKey, _ := ed25519.GenerateKey(nil)
+									return pubKey, privKey.Seed()
+								}
+							}
+						}()
+						for {
+							pubKey, seed := getPair()
+							base36PubKey := base36.EncodeToStringLc(pubKey)
+							mu.Lock()
+							if shortest == "" || len(base36PubKey) < len(shortest) {
+								shortest = base36PubKey
+								seedBase36Lc := base36.EncodeToStringLc(seed)
+								fmt.Printf("%s %s\n", base36PubKey, seedBase36Lc)
+							}
+							tries++
+							mu.Unlock()
+						}
+					}()
+				}
+				var lastTries int64
+				duration := time.Second
+				for {
+					time.Sleep(duration)
+					mu.Lock()
+					curTries := tries
+					mu.Unlock()
+					log.Printf("%v tries/s", (curTries-lastTries)/int64(duration/time.Second))
+					duration *= 2
+					lastTries = curTries
+				}
 			}
 			return
 		}()},
