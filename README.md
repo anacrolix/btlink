@@ -12,22 +12,22 @@ btlink is the working name, due to the combination of BitTorrent, HTTP URL "link
 
 #### Top-level domain
 
-The top-level domain to trigger proxy intervention, and for general identification of btlink domain addressing (referred to as `tld`) was `.bt`. However that may be incompatible with the [ccTLD of Bhutan](https://en.wikipedia.org/wiki/.bt) (See issue [#2](https://github.com/anacrolix/btlink/issues/2)).
+The top-level domain to trigger proxy intervention, and for general identification of btlink domain addressing (referred to as `tld`) was `.bt`. However that may be incompatible with the [ccTLD of Bhutan](https://en.wikipedia.org/wiki/.bt) (See issue [#2](https://github.com/anacrolix/btlink/issues/2)). The current `tld` in use is `btlink`.
 
 Where possible, separate domains are used to reference different torrents to provide [origin isolation].
 
 [origin isolation]: https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy
 
-#### {infohash}.ih.{tld}/{[torrent path schema](#torrent-path-schema)}}
+#### {infohash}-ih.{tld}/{[torrent path schema](#torrent-path-schema)}}
 
 Files within a torrent are exposed via the URL path being the path components of the files join with `/`. Suitable headers may be included as determined. How is the info name field handled? Perhaps it is ignored, except for single-file torrents?
     
-#### {salt}.{public key}.pk.{tld}/{[torrent path schema](#torrent-path-schema)}}
+#### ({salt..}[.-])?{base36(public key)}-pk.{tld}/{[torrent path schema](#torrent-path-schema)}}
 
-Serves torrent corresponding to lookup of mutable DHT item. Salt is optional per [BEP 46]. This means that owners of a public key can also manage cookies for their salted subdomains (and potentially other resources that support a subdomain relationship like this).
+Serves torrent corresponding to lookup of mutable DHT item. Salt is optional per [BEP 46]. This means that owners of a public key can also manage cookies for their salted subdomains (and potentially other resources that support a subdomain relationship like this). The salt may or may not be part of the same label as the public key for wildcard certificate reasons.
 
-#### {target}.44.{tld}
-Fetches an immutable item from the DHT. `44` is a reference to [BEP 44]. The returned item is an encoded bencode value. Various path and query values might support conversion into other formats.
+#### {target}-44.{tld}
+Fetches an immutable item from the DHT. `44` is a reference to [BEP 44]. The returned item is an encoded bencode value. Various path and query values might support conversion into other formats. Currently unimplemented.
 
 [BEP 44]: http://bittorrent.org/beps/bep_0044.html
 [BEP 46]: http://bittorrent.org/beps/bep_0046.html
@@ -36,7 +36,7 @@ Fetches an immutable item from the DHT. `44` is a reference to [BEP 44]. The ret
 
 #### Torrent path schema
 
-Files within a torrent are exposed with a path equal to the components of the `path` list in the `info` `files` field joined with `/`. There may be additional special paths exposed within at `/.btlink/` and `/.well-known/` as found appropriate.
+Files within a torrent are exposed with a path equal to the components of the `path` list in the `info` `files` field joined with `/`. There may be additional special paths exposed within at `/.btlink/` and `/.well-known/` as found appropriate. Currently the info `name` is ignored, however for compatibility with webseeding, it may be exposed in a special directory for that purpose (possibly in `/.btlink/`).
 
 #### Proxy btlink schema
 
