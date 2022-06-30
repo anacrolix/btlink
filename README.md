@@ -4,7 +4,7 @@ btlink implements a HTTP(s) addressing scheme for BitTorrent.
 
 ## Naming
 
-btlink is the working name, due to the combination of BitTorrent, HTTP URL "links" and the plan to implement something similar to [DNSLink](https://dnslink.io/). Alternative names might invoke something to do with swarms and webs, due to the overlap in terminology there in the use of BitTorrent and HTTP. Shelob, or the Flood for example.
+btlink is the working name, due to the combination of BitTorrent, HTTP URL "links" and the plan to implement something similar to [DNSLink](https://dnslink.io/). Alternative names might invoke something to do with swarms and webs, due to the overlap in terminology there in the use of BitTorrent and HTTP. Shelob, or the Flood for example. Less BitTorrent-specific names like distweb are an option if other backing data platforms are supported (like IPFS, or blockchains).
 
 ## Architecture
 
