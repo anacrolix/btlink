@@ -203,7 +203,7 @@ func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Reques
 		h.serveRoot(w, r)
 		return true
 	}
-	labelParts := strings.SplitN(ss[0], "-", 3)
+	labelParts := strings.Split(ss[0], "-")
 	ss = ss[1:]
 	reverse(labelParts)
 	switch labelParts[0] {
@@ -230,7 +230,7 @@ func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Reques
 		labelParts = labelParts[1:]
 		reverse(labelParts)
 		reverse(ss)
-		if len(labelParts) > 1 {
+		if len(labelParts) != 0 {
 			ss = append(ss, strings.Join(labelParts, "-"))
 		}
 		salt := strings.Join(ss, ".")
