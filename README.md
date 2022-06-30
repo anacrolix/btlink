@@ -58,6 +58,21 @@ Regular BitTorrent magnet links correspond to the `.ih.{tld}` domain space.
 
 Here proxies and gateways are described separately, but it's likely that in initial implementations they will be combined. There could be good reasons to separate them for more advanced use.
 
+```mermaid
+flowchart TD
+    user --> proxy
+    user --> gateway
+    subgraph btlink proxy
+        proxy
+        gateway
+    end
+    proxy --> gateway
+    subgraph confluence
+        gateway --> client
+        client --> bittorrent
+    end
+```
+
 ### Proxies
 
 Proxies are used to transparently provide a mapping from URLs to BitTorrent without modifying HTTP client software. Support for configuring HTTP proxies is well-supported and common due to ubiquitous use on corporate and government systems, as well as by anti-censorship and privacy advocates.
