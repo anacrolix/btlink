@@ -8,6 +8,44 @@ btlink is the working name, due to the combination of BitTorrent, HTTP URL "link
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    subgraph user
+        start
+        btlinkPAC
+        noBtlinkPAC
+        direct
+    end
+    subgraph proxySubgraph
+        proxy
+        proxySpecialPaths
+    end
+    start(User initiates HTTP request) --> btlinkPAC & noBtlinkPAC
+    btlinkPAC(btlink PAC configured) --> dnslinkHost(Domain has btlink DNSLink entry) & btlinkTLD(Host ends with .btlink) --> proxy --> gateway(some btlink gateway)
+    btlinkPAC --> direct
+    noBtlinkPAC(no btlink PAC) --> direct
+    noBtlinkPAC --> proxyDomain --> proxy
+    proxy(Request sent to proxy) --> proxySpecialPaths & gatewayDomain & nonGatewayDomain
+    direct(Bypass btlink proxy) --> gatewayDomain --> gateway
+    direct --> nonGatewayDomain --> regularWeb
+    subgraph gatewaySubgraph
+        gateway --> infohashDomain --> serveInfohashDomain --> serveTorrentPathSchema
+        gateway --> pkDomain(Public key domain)
+        gateway --> gatewayDnslinkedHost --> resolveDnslink --> gateway
+        gateway --> gatewayRootDomain --> serveGatewayRootUploader  
+        bep44Domain
+        serveBep44Value          
+    end
+    pkDomain --> resolveTarget(Salt public key) --> dhtBep46Lookup(Resolve BEP46 infohash from target) --> serveInfohashDomain(Get info for infohash)
+    gateway --> bep44Domain --> fetchBep44Value --> serveBep44Value
+    subgraph confluence
+        dhtBep46Lookup
+        resolveTarget
+        fetchBep44Value
+        serveInfohashDomain
+    end
+```
+
 ### Domain schema
 
 #### Top-level domain
