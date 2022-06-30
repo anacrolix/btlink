@@ -31,12 +31,54 @@ func main() {
 	log.SetFlags(log.Flags() | log.Lshortfile)
 	main := bargle.Main{}
 	main.Defer(envpprof.Stop)
+	type encoderFunc func([]byte) string
+	encoderChoices := bargle.Choices[encoderFunc]{
+		"base64url": base64.URLEncoding.EncodeToString,
+		"base36lc":  base36.EncodeToStringLc,
+		"base32hex": base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString,
+		"hex":       hex.EncodeToString,
+	}
 	main.Positionals = append(main.Positionals,
 		bargle.Subcommand{Name: "proxy", Command: proxy()},
 		bargle.Subcommand{Name: "gencert", Command: genCert()},
+		bargle.Subcommand{Name: "extract-pubkey", Command: func() (cmd bargle.Command) {
+			encoderChoice := bargle.NewChoice(encoderChoices)
+			cmd.Options = append(cmd.Options, func() bargle.Param {
+				m := bargle.NewUnaryOption(encoderChoice)
+				m.AddLong("encoder")
+				m.SetDefault("base36lc")
+				return m.Make()
+			}())
+			var seed []byte
+			{
+				var encodedSeed string
+				m := &bargle.Positional{
+					Value: bargle.AutoUnmarshaler(&encodedSeed),
+					Name:  "private-key",
+					Desc:  "private key seed",
+					AfterParseFunc: func(ctx bargle.Context) (err error) {
+						seed, err = hex.DecodeString(encodedSeed)
+						if err != nil {
+							return
+						}
+						if len(seed) != ed25519.SeedSize {
+							return fmt.Errorf("expected %v bytes, got %v", ed25519.SeedSize, len(seed))
+						}
+						return nil
+					},
+				}
+				cmd.Positionals = append(cmd.Positionals, m)
+			}
+			cmd.DefaultAction = func() error {
+				privKey := ed25519.NewKeyFromSeed(seed)
+				fmt.Println(encoderChoice.Value()(privKey.Public().(ed25519.PublicKey)))
+				return nil
+			}
+			return
+		}()},
 		bargle.Subcommand{Name: "convert", Command: func() (cmd bargle.Command) {
+			cmd.Desc = "convert between different encodings used in btlink"
 			type decoderFunc func(string) ([]byte, error)
-			type encoderFunc func([]byte) string
 			decoderChoice := bargle.NewChoice(bargle.Choices[decoderFunc]{
 				"hex":       hex.DecodeString,
 				"base36":    base36.DecodeString,
@@ -46,12 +88,7 @@ func main() {
 			decoderParam.AddLong("from")
 			decoderParam.AddShort('f')
 			decoderParam.SetDefault("hex")
-			encoderChoice := &bargle.Choice[encoderFunc]{Choices: bargle.Choices[encoderFunc]{
-				"base64url": base64.URLEncoding.EncodeToString,
-				"base36lc":  base36.EncodeToStringLc,
-				"base32hex": base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString,
-				"hex":       hex.EncodeToString,
-			}}
+			encoderChoice := &bargle.Choice[encoderFunc]{Choices: encoderChoices}
 			encoderParam := bargle.NewUnaryOption(encoderChoice)
 			encoderParam.AddLong("to")
 			encoderParam.AddShort('t')
