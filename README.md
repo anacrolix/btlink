@@ -10,40 +10,69 @@ btlink is the working name, due to the combination of BitTorrent, HTTP URL "link
 
 ```mermaid
 flowchart TD
-    subgraph user
-        start
-        btlinkPAC
-        noBtlinkPAC
-        direct
+    regularWeb[Send request to regular web]
+    gatewayDomain[Is gateway domain?]
+    subgraph user [User HTTP Client]
+        start[User initiates HTTP request]
+        checkPAC[User has proxy auto-configuration?]
+        btlinkTLD
+        dnslinkHost        
+        proxyDomain[Host matches a proxy domain?]
+        proxy[Send request to proxy]
     end
-    subgraph proxySubgraph
-        proxy
-        proxySpecialPaths
+    start --> checkPAC
+    checkPAC --> |No| proxyDomain
+    checkPAC --> |Yes| btlinkTLD
+    btlinkTLD ==> |No| proxyDomain
+    btlinkTLD[Host ends with .btlink?] -.-> |No| dnslinkHost[Domain has btlink DNSLink entry?]
+    dnslinkHost --> |No| proxyDomain
+    dnslinkHost --> |Yes| proxy
+    btlinkTLD --> |Yes| proxy
+    proxyDomain --> |No| gatewayDomain
+    proxyDomain --> |Yes| proxy 
+    gatewayDomain --> |No| regularWeb
+    gatewayDomain --> |Yes| gateway
+    proxy --> proxyReceive
+    subgraph proxySubgraph [proxy]
+        proxyReceive[Proxy receives request]
+        proxySpecialPaths[Request path contains special proxy path?]
+        proxyBtlinkDomain[Request host ends in .btlink?]
+        proxyDnslinkHost[Host domain has DNSLink entry?]
+        serveProxySpecialPath[Serve special proxy path]
     end
-    start(User initiates HTTP request) --> btlinkPAC & noBtlinkPAC
-    btlinkPAC(btlink PAC configured) --> dnslinkHost(Domain has btlink DNSLink entry) & btlinkTLD(Host ends with .btlink) --> proxy --> gateway(some btlink gateway)
-    btlinkPAC --> direct
-    noBtlinkPAC(no btlink PAC) --> direct
-    noBtlinkPAC --> proxyDomain --> proxy
-    proxy(Request sent to proxy) --> proxySpecialPaths & gatewayDomain & nonGatewayDomain
-    direct(Bypass btlink proxy) --> gatewayDomain --> gateway
-    direct --> nonGatewayDomain --> regularWeb
-    subgraph gatewaySubgraph
-        gateway --> infohashDomain --> serveInfohashDomain --> serveTorrentPathSchema
-        gateway --> pkDomain(Public key domain)
-        gateway --> gatewayDnslinkedHost --> resolveDnslink --> gateway
-        gateway --> gatewayRootDomain --> serveGatewayRootUploader  
-        bep44Domain
-        serveBep44Value          
+    proxyReceive --> proxySpecialPaths
+    proxySpecialPaths --> |Yes| serveProxySpecialPath
+    proxySpecialPaths --> |No| proxyBtlinkDomain
+    proxyBtlinkDomain --> |No| proxyDnslinkHost
+    proxyBtlinkDomain --> |Yes| gateway
+    proxyDnslinkHost --> |No| gatewayDomain
+    proxyDnslinkHost --> |Yes| gateway
+    subgraph gatewaySubgraph [gateway]
+        gateway[Request sent to gateway]
+        serveBep44Value[Serve BEP44 value]
+        btlinkSubdomain[Resolve btlink domain schema]
+        gatewayResolveDnslink[Resolve DNSLink]
+        gatewayCheckBtlinkSubdomain[Is btlink subdomain?]
+        gatewayRootDomain[Is gateway or btlink root domain?]
+        serveGatewayRootUploader[Serve gateway root domain page]
+        checkSpecialTorrentPath[Does path require special handling?]
+        serveSpecialTorrentPath[Serve special torrent path]
+        gatewayServeTorrentFile[Serve torrent file over HTTP]
+        subgraph torrentClient ["BitTorrent client"]
+            fetchBep44Value[Get DHT item using BEP44]
+            dhtBep46Lookup
+            getTorrentInfo
+            openTorrentFileReader[Open torrent file reader]
+        end    
     end
-    pkDomain --> resolveTarget(Salt public key) --> dhtBep46Lookup(Resolve BEP46 infohash from target) --> serveInfohashDomain(Get info for infohash)
-    gateway --> bep44Domain --> fetchBep44Value --> serveBep44Value
-    subgraph confluence
-        dhtBep46Lookup
-        resolveTarget
-        fetchBep44Value
-        serveInfohashDomain
-    end
+    gateway --> gatewayRootDomain --> |Yes| serveGatewayRootUploader  
+    gatewayRootDomain --> |No| gatewayCheckBtlinkSubdomain
+    gatewayCheckBtlinkSubdomain --> |No| gatewayResolveDnslink --> btlinkSubdomain
+    gatewayCheckBtlinkSubdomain --> |Yes| btlinkSubdomain
+    btlinkSubdomain --> |pk| dhtBep46Lookup(Resolve salt and public key to infohash using BEP46) --> getTorrentInfo(Get info for infohash)
+    btlinkSubdomain --> |ih| getTorrentInfo --> checkSpecialTorrentPath --> serveSpecialTorrentPath
+    checkSpecialTorrentPath --> openTorrentFileReader --> gatewayServeTorrentFile
+    btlinkSubdomain -.-> |44| fetchBep44Value -.-> serveBep44Value
 ```
 
 ### Domain schema
