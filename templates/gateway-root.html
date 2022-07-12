@@ -10,12 +10,14 @@
         gtag('config', 'G-ECHVE14X7L');
     </script>
 {{- end }}
-<p></p>
-
+{{ define "common-head" -}}
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    {{ template "google-analytics" }}
+{{ end }}
 <html>
 <head>
     <title>btlink root gateway domain</title>
-    {{ template "google-analytics" }}
+    {{ template "common-head" }}
 </head>
 <body>
 {{ with .JustUploaded }}
