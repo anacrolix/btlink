@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/anacrolix/missinggo/v2/iter"
 	"log"
 	mathRand "math/rand"
 	"net/http"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anacrolix/missinggo/v2/iter"
 
 	"github.com/anacrolix/bargle"
 	"github.com/anacrolix/envpprof"

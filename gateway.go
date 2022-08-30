@@ -7,8 +7,6 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
-	"github.com/anacrolix/generics"
-	"github.com/davecgh/go-spew/spew"
 	"html/template"
 	"io"
 	"log"
@@ -18,6 +16,10 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/anacrolix/generics"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/huandu/xstrings"
 
 	"github.com/anacrolix/dht/v2/bep44"
 	"github.com/anacrolix/dht/v2/krpc"
@@ -154,7 +156,7 @@ func (h *gatewayHandler) resolveDomainDnsLink(w http.ResponseWriter, r *http.Req
 	if len(txts) == 0 {
 		return false
 	}
-	return h.serveBtLinkDomain(w, r, strings.Split(txts[0], "."))
+	return h.serveBtLinkDomain(w, r, strings.Split(txts[0], "."), generics.None[string]())
 }
 
 func (h *gatewayHandler) serveOldBtLinkRedirection(w http.ResponseWriter, r *http.Request) bool {
@@ -184,8 +186,10 @@ func (h *gatewayHandler) serveBtLink(w http.ResponseWriter, r *http.Request) boo
 	log.Printf("considering %q for btlink handling", r.Host)
 	ss := strings.Split(r.Host, ".")
 	reverse(ss)
+	gatewayDomainParts := make([]string, 0, len(ss))
 	// Strip potential gateway labels
 	for len(ss) != 0 && ss[0] != rootDomain {
+		gatewayDomainParts = append(gatewayDomainParts, ss[0])
 		ss = ss[1:]
 	}
 	// The root domain was not seen
@@ -193,12 +197,14 @@ func (h *gatewayHandler) serveBtLink(w http.ResponseWriter, r *http.Request) boo
 		return false
 	}
 	log.Printf("handling btlink request for %q", requestUrl(r))
+	gatewayDomainParts = append(gatewayDomainParts, ss[0])
 	// Strip the root domain
 	ss = ss[1:]
-	return h.serveBtLinkDomain(w, r, ss)
+	reverse(gatewayDomainParts)
+	return h.serveBtLinkDomain(w, r, ss, generics.Some(strings.Join(gatewayDomainParts, ".")))
 }
 
-func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Request, ss []string) bool {
+func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Request, ss []string, gatewayDomain generics.Option[string]) bool {
 	if len(ss) == 0 {
 		h.serveRoot(w, r)
 		return true
@@ -214,7 +220,7 @@ func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "bad host", http.StatusBadRequest)
 			return true
 		}
-		h.serveTorrentPath(w, r, strings.Join(labelParts, "-"))
+		h.serveTorrentPath(w, r, strings.Join(labelParts, "-"), gatewayDomain)
 		return true
 	case "pk":
 		labelParts = labelParts[1:]
@@ -244,7 +250,7 @@ func (h *gatewayHandler) serveBtLinkDomain(w http.ResponseWriter, r *http.Reques
 			return true
 		}
 		log.Printf("resolved %q to %x", r.Host, bep46.Ih)
-		h.serveTorrentPath(w, r, hex.EncodeToString(bep46.Ih[:]))
+		h.serveTorrentPath(w, r, hex.EncodeToString(bep46.Ih[:]), gatewayDomain)
 		return true
 	}
 	http.Error(w, "bad host", http.StatusBadRequest)
@@ -337,7 +343,11 @@ func (h *gatewayHandler) gatewayWebseedScheme(r *http.Request) string {
 	return "http"
 }
 
-func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string) {
+func requestHasBtlinkQueryFlag(r *http.Request, flag string) bool {
+	return r.URL.Query().Has(xstrings.ToKebabCase("btlink " + flag))
+}
+
+func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request, ihHex string, gatewayDomain generics.Option[string]) {
 	mi, ok := h.getTorrentMetaInfo(w, r, ihHex)
 	if !ok {
 		return
@@ -347,7 +357,7 @@ func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request,
 		panic(err)
 	}
 	var subFiles []dirPageItem
-	autoIndex := !r.URL.Query().Has("btlink-no-autoindex")
+	autoIndex := !requestHasBtlinkQueryFlag(r, "no-index")
 	baseDisplayPath := r.URL.Path[1:]
 	upvertedFiles := info.UpvertedFiles()
 	subDirs := make(map[string]int64, len(upvertedFiles))
@@ -360,7 +370,7 @@ func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request,
 		if autoIndex {
 			// Serve this file as the directory.
 			if relPath == "index.html" {
-				h.serveTorrentFile(w, r, ihHex, dp)
+				h.serveTorrentFile(w, r, ihHex, dp, gatewayDomain)
 				return
 			}
 		}
@@ -436,16 +446,20 @@ type dirPageData struct {
 	MagnetURI template.URL
 }
 
-func (h *gatewayHandler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string) {
+func (h *gatewayHandler) serveTorrentPath(w http.ResponseWriter, r *http.Request, ihHex string, gatewayDomain generics.Option[string]) {
 	if strings.HasSuffix(r.URL.Path, "/") {
-		h.serveTorrentDir(w, r, ihHex)
+		h.serveTorrentDir(w, r, ihHex, gatewayDomain)
 		return
 	}
-	h.serveTorrentFile(w, r, ihHex, r.URL.Path[1:])
+	h.serveTorrentFile(w, r, ihHex, r.URL.Path[1:], gatewayDomain)
 }
 
-func (h *gatewayHandler) serveTorrentFile(w http.ResponseWriter, r *http.Request, ihHex, filePath string) {
-	h.confluence.data(w, r, ihHex, filePath)
+func (h *gatewayHandler) serveTorrentFile(w http.ResponseWriter, r *http.Request, ihHex, filePath string, gatewayDomain generics.Option[string]) {
+	gatewayDomains := h.gatewayDomains
+	if gatewayDomain.Ok {
+		gatewayDomains = append([]string{gatewayDomain.Value}, gatewayDomains...)
+	}
+	h.confluence.data(w, r, ihHex, filePath, gatewayDomains)
 }
 
 func (h *gatewayHandler) getMutableInfohash(target bep44.Target, salt string) (_ krpc.Bep46Payload, err error) {

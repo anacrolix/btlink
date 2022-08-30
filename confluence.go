@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 )
 
 type confluenceHandler struct {
@@ -16,7 +17,7 @@ type confluenceHandler struct {
 	confluenceTransport http.Transport
 }
 
-func (ch *confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih string, path string) {
+func (ch *confluenceHandler) data(w http.ResponseWriter, incomingRequest *http.Request, ih string, path string, gatewayDomains []string) {
 	(&httputil.ReverseProxy{
 		Director: func(r *http.Request) {
 			r.URL.Host = ch.confluenceHost
@@ -36,10 +37,24 @@ func (ch *confluenceHandler) data(w http.ResponseWriter, r *http.Request, ih str
 			if r.Header.Get("Content-Type") == "video/x-matroska" {
 				r.Header.Set("Content-Type", "video/webm")
 			}
+			if requestHasBtlinkQueryFlag(incomingRequest, "src only") {
+				r.Header.Set(
+					"Content-Security-Policy",
+					strings.Join(
+						append(
+							[]string{"default-src", "'self'"},
+							func() (hostSources []string) {
+								for _, domain := range gatewayDomains {
+									hostSources = append(hostSources, domain, "*."+domain)
+								}
+								return
+							}()...),
+						" "))
+			}
 			return nil
 		},
 		Transport: &ch.confluenceTransport,
-	}).ServeHTTP(w, r)
+	}).ServeHTTP(w, incomingRequest)
 }
 
 func (ch *confluenceHandler) newRequest(ctx context.Context, method string, ref *url.URL, body io.Reader) *http.Request {
