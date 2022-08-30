@@ -355,10 +355,11 @@ func proxy() (cmd bargle.Command) {
 					},
 				}
 				s := http.Server{
-					Addr:        httpsAddr,
-					Handler:     proxyHandler("tls http server"),
-					TLSConfig:   tlsConfig,
-					ReadTimeout: 5 * time.Second,
+					Addr:      httpsAddr,
+					Handler:   proxyHandler("tls http server"),
+					TLSConfig: tlsConfig,
+					// TODO: Test this with Safari using HTTPS then falling back to HTTP proxying.
+					ReadHeaderTimeout: 5 * time.Second,
 				}
 				log.Printf("starting https server at %q", s.Addr)
 				err = s.ListenAndServeTLS("", "")
