@@ -18,13 +18,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anacrolix/missinggo/v2/iter"
-
 	"github.com/anacrolix/bargle"
 	"github.com/anacrolix/envpprof"
 	"github.com/anacrolix/generics"
+	"github.com/anacrolix/missinggo/v2/iter"
 	"github.com/dgraph-io/ristretto"
+	_ "github.com/honeycombio/honeycomb-opentelemetry-go"
+	"github.com/honeycombio/opentelemetry-go-contrib/launcher"
 	"github.com/multiformats/go-base36"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -212,6 +214,11 @@ func proxy() (cmd bargle.Command) {
 	flagOpt.AddLong("log-request-headers")
 	cmd.Options = append(cmd.Options, flagOpt.Make())
 	cmd.DefaultAction = func() error {
+		shutdownTelemetry, err := launcher.ConfigureOpenTelemetry()
+		if err != nil {
+			return fmt.Errorf("configuration open telemetry: %w", err)
+		}
+		defer shutdownTelemetry()
 		confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
 		if err != nil {
 			log.Printf("error loading confluence client cert: %v", err)
@@ -244,12 +251,12 @@ func proxy() (cmd bargle.Command) {
 			confluence: confluenceHandler{
 				confluenceHost:   confluenceHost,
 				confluenceScheme: confluenceScheme,
-				confluenceTransport: http.Transport{
+				confluenceTransport: otelhttp.NewTransport(&http.Transport{
 					TLSClientConfig: &tls.Config{
 						Certificates:       []tls.Certificate{confluenceClientCert},
 						InsecureSkipVerify: true,
 					},
-				},
+				}),
 			},
 			dhtItemCache:    dhtItemCache,
 			dirPageTemplate: htmlTemplates.Lookup("dir.html"),
@@ -290,30 +297,33 @@ func proxy() (cmd bargle.Command) {
 			ShortSAN: "btlink.anacrolix.link",
 		}
 		proxyHandler := func(logPrefix string) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if logRequestHeaders {
-					log.Printf("%v: received request\n%s", logPrefix, requestLogString(r))
-				}
-				err := func() error {
-					// Connect can be passed to a HTTPS proxy endpoint. We want to handle this
-					// ourselves, so we loop it back too. This also works if we receive CONNECT over HTTPS.
-					if r.Method == http.MethodConnect {
-						// We serve TLS by looping back to the HTTPS handler on this host.
+			return otelhttp.NewHandler(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if logRequestHeaders {
+						log.Printf("%v: received request\n%s", logPrefix, requestLogString(r))
+					}
+					err := func() error {
+						// Connect can be passed to a HTTPS proxy endpoint. We want to handle this
+						// ourselves, so we loop it back too. This also works if we receive CONNECT over HTTPS.
+						if r.Method == http.MethodConnect {
+							// We serve TLS by looping back to the HTTPS handler on this host.
+							log.Printf("handling proxy request for %q", requestUrl(r))
+							handleConnect(w, "localhost"+httpsAddr, r)
+							return nil
+						}
+						if handler.ServeHTTP(w, r) {
+							return nil
+						}
 						log.Printf("handling proxy request for %q", requestUrl(r))
-						handleConnect(w, "localhost"+httpsAddr, r)
+						proxyMux.ServeHTTP(w, r)
 						return nil
+					}()
+					if err != nil {
+						log.Printf("%v: error in proxy handler: %v", logPrefix, err)
 					}
-					if handler.ServeHTTP(w, r) {
-						return nil
-					}
-					log.Printf("handling proxy request for %q", requestUrl(r))
-					proxyMux.ServeHTTP(w, r)
-					return nil
-				}()
-				if err != nil {
-					log.Printf("%v: error in proxy handler: %v", logPrefix, err)
-				}
-			})
+				}),
+				logPrefix,
+			)
 		}
 		serverErrs := make(chan error, 2)
 		go func() {

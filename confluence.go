@@ -14,7 +14,7 @@ import (
 type confluenceHandler struct {
 	confluenceHost      string
 	confluenceScheme    string
-	confluenceTransport http.Transport
+	confluenceTransport http.RoundTripper
 }
 
 func (ch *confluenceHandler) data(w http.ResponseWriter, incomingRequest *http.Request, ih string, path string, gatewayDomains []string) {
@@ -53,7 +53,7 @@ func (ch *confluenceHandler) data(w http.ResponseWriter, incomingRequest *http.R
 			}
 			return nil
 		},
-		Transport: &ch.confluenceTransport,
+		Transport: ch.confluenceTransport,
 	}).ServeHTTP(w, incomingRequest)
 }
 
@@ -74,7 +74,7 @@ func (ch *confluenceHandler) newRequest(ctx context.Context, method string, ref 
 func (ch *confluenceHandler) do(req *http.Request) (resp *http.Response, err error) {
 	// TODO: Reuse
 	hc := http.Client{
-		Transport: &ch.confluenceTransport,
+		Transport: ch.confluenceTransport,
 	}
 	resp, err = hc.Do(req)
 	return
