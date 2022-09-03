@@ -173,13 +173,16 @@ func (h *gatewayHandler) serveOldBtLinkRedirection(w http.ResponseWriter, r *htt
 }
 
 func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) bool {
-	if h.resolveDomainDnsLink(w, r) {
-		return true
-	}
 	if h.serveBtLink(w, r) {
 		return true
 	}
-	return h.serveOldBtLinkRedirection(w, r)
+	if h.serveOldBtLinkRedirection(w, r) {
+		return true
+	}
+	if h.resolveDomainDnsLink(w, r) {
+		return true
+	}
+	return false
 }
 
 func (h *gatewayHandler) serveBtLink(w http.ResponseWriter, r *http.Request) bool {
