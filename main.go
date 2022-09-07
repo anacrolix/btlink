@@ -216,9 +216,12 @@ func proxy() (cmd bargle.Command) {
 	cmd.DefaultAction = func() error {
 		shutdownTelemetry, err := launcher.ConfigureOpenTelemetry()
 		if err != nil {
-			return fmt.Errorf("configuration open telemetry: %w", err)
+			err = fmt.Errorf("configuring open telemetry: %w", err)
+			// Silly honeycomb helper has a newline in the error message. Not cool.
+			log.Printf("%q", err)
+		} else {
+			defer shutdownTelemetry()
 		}
-		defer shutdownTelemetry()
 		confluenceClientCert, err := tls.LoadX509KeyPair("confluence.pem", "confluence.pem")
 		if err != nil {
 			log.Printf("error loading confluence client cert: %v", err)
