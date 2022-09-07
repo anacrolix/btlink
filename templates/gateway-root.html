@@ -32,13 +32,14 @@
     {{ end }}
 {{ end }}
 <h3>Uploader</h3>
-<!--<h4>Files</h4>-->
 <form method="post" enctype="multipart/form-data">
     <label for="file-chooser">Choose specific files</label>
     <input type="file" multiple name="files" id="file-chooser">
     <br>
     <label for="directory-chooser">and/or a directory</label>
     <input type="file" multiple directory webkitdirectory name="files" id="directory-chooser">
+    <label for="strip-top-directory">Strip top directory</label>
+    <input type="checkbox" name="strip-top-directory" id="strip-top-directory">
     <br>
     <label for="name">
         Torrent name
