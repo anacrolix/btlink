@@ -13,6 +13,8 @@
 {{ define "common-head" -}}
     <meta name="viewport" content="width=device-width,initial-scale=1">
     {{ template "google-analytics" }}
+    <style>
+    </style>
 {{ end }}
 <html>
 <head>
@@ -33,20 +35,27 @@
 {{ end }}
 <h3>Uploader</h3>
 <form method="post" enctype="multipart/form-data">
-    <label for="file-chooser">Choose specific files</label>
-    <input type="file" multiple name="files" id="file-chooser">
-    <br>
-    <label for="directory-chooser">and/or a directory</label>
-    <input type="file" multiple directory webkitdirectory name="files" id="directory-chooser">
-    <label for="strip-top-directory">Strip top directory</label>
-    <input type="checkbox" name="strip-top-directory" id="strip-top-directory">
-    <br>
-    <label for="name">
-        Torrent name
-    </label>
-    <input type="text" id="name" name="name" value="btlink upload">
-    <br>
-    <input type="submit" value="Create torrent">
+    <div>
+        <label for="file-chooser">Choose specific files</label>
+        <input type="file" multiple name="files" id="file-chooser">
+    </div>
+    <div>
+        <label for="directory-chooser">and/or a directory</label>
+        <input type="file" multiple directory webkitdirectory name="files" id="directory-chooser">
+    </div>
+    <div>
+        <label for="strip-top-directory">Strip top directory</label>
+        <input type="checkbox" name="strip-top-directory" id="strip-top-directory">
+    </div>
+    <div>
+        <label for="name">
+            Torrent name
+        </label>
+        <input type="text" id="name" name="name" value="btlink upload">
+    </div>
+    <div>
+        <input type="submit" value="Create torrent">
+    </div>
 </form>
 </body>
 </html>
