@@ -360,7 +360,7 @@ func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request,
 		panic(err)
 	}
 	var subFiles []dirPageItem
-	autoIndex := !requestHasBtlinkQueryFlag(r, "no-index")
+	autoIndex := !requestHasBtlinkQueryFlag(r, "no autoindex")
 	baseDisplayPath := r.URL.Path[1:]
 	upvertedFiles := info.UpvertedFiles()
 	subDirs := make(map[string]int64, len(upvertedFiles))
