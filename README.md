@@ -1,6 +1,8 @@
 # btlink
 
-btlink implements a HTTP(s) addressing scheme for BitTorrent.
+btlink is a peer-to-peer web hosting implementation. It uses constructs provided by BitTorrent and the BitTorrent DHT to handle DNS and serve websites. It supports domain certificates, subdomains, origin isolation and CORS. btlink can be progressively integrated, starting from no user integration at all, to having users run their own private gateway on their device for maximum control, with a range of options between. The current implementation makes use of the ubiquitous HTTP(S) proxy and proxy auto-config support to extend the web experience at the system level to include native btlink handling. 
+
+btlink defines a HTTP(s) addressing scheme for BitTorrent. This means no special cases for each application: All applications on a configured device will work transparently with btlink without any changes in code, and without knowing that some domains are served from a peer-to-peer network.
 
 ## Naming
 
