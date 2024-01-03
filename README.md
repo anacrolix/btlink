@@ -10,6 +10,8 @@ btlink is the working name, due to the combination of BitTorrent, HTTP URL "link
 
 ## Architecture
 
+Dotted lines represent flows that aren't implemented yet. In some cases that may mean there are multiple paths for the same question, the dotted one is intended in the future.
+
 ```mermaid
 flowchart TD
     regularWeb[Send request to regular web]
