@@ -2,3 +2,6 @@ ca.key
 ca.pem
 wildcard.bt.pem
 localhost.pem
+
+# Build artifact from `go build ./...` at the module root.
+/btlink
