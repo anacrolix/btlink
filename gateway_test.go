@@ -3,15 +3,14 @@ package main
 import (
 	"github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent/metainfo"
-	qt "github.com/frankban/quicktest"
+	"github.com/go-quicktest/qt"
 	"net/url"
 	"testing"
 )
 
 func TestRedirectOldDomain(t *testing.T) {
-	c := qt.New(t)
 	test := func(host string, expected generics.Option[string]) {
-		c.Check(redirectOldBtRoot(host), qt.Equals, expected)
+		qt.Check(t, qt.Equals(redirectOldBtRoot(host), expected))
 	}
 	test(
 		"bt.btlink.anacrolix.link",
@@ -43,5 +42,5 @@ func TestAddGatewayWebseedScheme(t *testing.T) {
 		Path:     "/",
 		RawQuery: "btlink-no-autoindex",
 	})
-	qt.Assert(t, m.Params["ws"], qt.DeepEquals, []string{"http://9a0df2a4500d65ab0b58e4ad3ef7c55576ca88f1-ih.btlink.localhost:42080/"})
+	qt.Assert(t, qt.DeepEquals(m.Params["ws"], []string{"http://9a0df2a4500d65ab0b58e4ad3ef7c55576ca88f1-ih.btlink.localhost:42080/"}))
 }
