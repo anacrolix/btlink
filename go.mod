@@ -1,13 +1,15 @@
 module github.com/anacrolix/btlink
 
-go 1.18
+go 1.24.0
+
+toolchain go1.24.7
 
 require (
 	github.com/anacrolix/bargle v0.0.0-20220622082028-6c0bfc8b614d
 	github.com/anacrolix/dht/v2 v2.11.1-0.20211104092016-7295f2558a39
 	github.com/anacrolix/envpprof v1.1.1
-	github.com/anacrolix/generics v0.0.0-20220618083756-f99e35403a60
-	github.com/anacrolix/missinggo/v2 v2.5.2
+	github.com/anacrolix/generics v0.0.0-20230113004304-d6428d516633
+	github.com/anacrolix/missinggo/v2 v2.12.0
 	github.com/anacrolix/torrent v1.35.1-0.20211104223025-f86af21cd2fe
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/ristretto v0.1.0
@@ -19,13 +21,12 @@ require (
 	github.com/multiformats/go-base36 v0.1.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.34.0
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
-	golang.org/x/exp v0.0.0-20220602145555-4a0574d9293f
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/sync v0.8.0
 	golang.org/x/text v0.3.7
 )
 
 require (
-	github.com/anacrolix/log v0.10.0 // indirect
+	github.com/anacrolix/log v0.17.0 // indirect
 	github.com/anacrolix/missinggo v1.3.0 // indirect
 	github.com/bradfitz/iter v0.0.0-20191230175014-e8f45d346db8 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
@@ -69,8 +70,9 @@ require (
 	go.opentelemetry.io/proto/otlp v0.18.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
+	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
+	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab // indirect
 	google.golang.org/genproto v0.0.0-20220112215332-a9c7c0acf9f2 // indirect
 	google.golang.org/grpc v1.47.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
