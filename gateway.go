@@ -28,10 +28,10 @@ import (
 	"github.com/dgraph-io/ristretto"
 	"github.com/dustin/go-humanize"
 	"github.com/multiformats/go-base36"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/collate"
 	"golang.org/x/text/language"
+	"slices"
 )
 
 type dhtItemCacheValue struct {
@@ -406,17 +406,16 @@ func (h *gatewayHandler) serveTorrentDir(w http.ResponseWriter, r *http.Request,
 	}
 	children = append(children, subFiles...)
 	// Dirs come from an unstable source (map), but their names are unique.
-	slices.SortStableFunc(children, func(l, r dirPageItem) bool {
+	slices.SortStableFunc(children, func(l, r dirPageItem) int {
 		lDir := strings.HasSuffix(l.Name, "/")
 		rDir := strings.HasSuffix(r.Name, "/")
 		if lDir != rDir {
-			return lDir
+			if lDir {
+				return -1
+			}
+			return 1
 		}
-		i := torrentFilesCollator.CompareString(l.Name, r.Name)
-		if i != 0 {
-			return i < 0
-		}
-		return false
+		return torrentFilesCollator.CompareString(l.Name, r.Name)
 	})
 	dirPath := r.URL.Path
 	infoHash := metainfo.NewHashFromHex(ihHex)
